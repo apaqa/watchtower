@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WatchTower — 监控平台</title>
+  <title>WatchTower — Monitoring Platform</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
-    /* ── 全局样式 ── */
+    /* ── Global styles ── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
@@ -29,7 +29,7 @@
       min-height: 100vh;
     }
 
-    /* ── 顶栏 ── */
+    /* ── Header ── */
     header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
@@ -55,7 +55,7 @@
     #status-dot.connected { background: var(--green); }
     #status-text { font-size: 0.8rem; color: var(--muted); }
 
-    /* ── 标签导航 ── */
+    /* ── Tab navigation ── */
     .tab-bar {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
@@ -80,11 +80,11 @@
       border-bottom-color: var(--accent);
     }
 
-    /* ── 标签面板 ── */
+    /* ── Tab panels ── */
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
 
-    /* ── 指标标签布局 ── */
+    /* ── Metrics tab layout ── */
     #tab-metrics {
       padding: 24px;
       display: grid;
@@ -92,12 +92,12 @@
       gap: 20px;
     }
 
-    /* ── 告警标签布局 ── */
+    /* ── Alerts tab layout ── */
     #tab-alerts {
       padding: 24px;
     }
 
-    /* ── 日志标签布局 ── */
+    /* ── Logs tab layout ── */
     #tab-logs {
       padding: 24px;
       display: flex;
@@ -105,7 +105,7 @@
       gap: 14px;
     }
 
-    /* ── 面板卡片 ── */
+    /* ── Panel cards ── */
     .panel {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -144,13 +144,13 @@
       margin-top: 4px;
     }
 
-    /* ── 颜色主题 ── */
+    /* ── Color themes ── */
     .cpu    .panel-value { color: var(--accent); }
     .ram    .panel-value { color: var(--green); }
     .disk   .panel-value { color: var(--yellow); }
     .custom .panel-value { color: var(--purple); }
 
-    /* ── 告警面板 ── */
+    /* ── Alert panel ── */
     .alert-panel {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -188,7 +188,7 @@
     }
     #create-alert-btn:hover { opacity: 0.85; }
 
-    /* 告警徽章 */
+    /* Alert badges */
     .badge {
       display: inline-flex;
       align-items: center;
@@ -207,7 +207,7 @@
     #active-alerts-list { margin-bottom: 16px; min-height: 32px; }
     #active-alerts-list .no-alerts { color: var(--muted); font-size: 0.85rem; }
 
-    /* 告警历史时间线 */
+    /* Alert history timeline */
     .history-title {
       font-size: 0.75rem;
       font-weight: 600;
@@ -236,7 +236,7 @@
     .history-name { font-weight: 600; }
     .history-msg  { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-    /* 创建告警模态框 */
+    /* Create alert modal */
     .modal-overlay {
       display: none;
       position: fixed;
@@ -283,7 +283,7 @@
     }
     #modal-error { color: var(--red); font-size: 0.82rem; display: none; }
 
-    /* ── WQL 查询面板 ── */
+    /* ── WQL query panel ── */
     .query-panel {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -352,7 +352,7 @@
     }
     #wql-result th { color: var(--muted); font-weight: 600; background: var(--bg); }
 
-    /* ── 日志面板 ── */
+    /* ── Log panel ── */
     .log-panel {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -407,7 +407,7 @@
       margin-left: auto;
     }
 
-    /* 日志表格 */
+    /* Log table */
     .log-table-wrap {
       max-height: 480px;
       overflow-y: auto;
@@ -449,7 +449,7 @@
     .log-src   { color: var(--purple); white-space: nowrap; }
     .log-msg   { word-break: break-word; }
 
-    /* 日志级别徽章 */
+    /* Log level badges */
     .log-badge {
       display: inline-block;
       padding: 1px 8px;
@@ -472,7 +472,7 @@
       font-size: 0.88rem;
     }
 
-    /* ── 端点监控面板 ── */
+    /* ── Endpoint monitoring panel ── */
     #tab-uptime { padding: 24px; }
     .probe-panel {
       background: var(--surface);
@@ -521,7 +521,7 @@
     }
     #probe-refresh-btn:hover { color: var(--text); }
 
-    /* 探针卡片 */
+    /* Probe cards */
     .probe-list { display: flex; flex-direction: column; gap: 12px; }
     .probe-card {
       background: var(--bg);
@@ -558,7 +558,7 @@
     .probe-rt       { font-size: 0.84rem; color: var(--text); font-variant-numeric: tabular-nums; }
     .probe-uptime-val { font-size: 0.84rem; color: var(--green); font-variant-numeric: tabular-nums; }
 
-    /* 状态历史圆点 */
+    /* Status history dots */
     .probe-dots {
       display: flex;
       gap: 3px;
@@ -575,16 +575,16 @@
     .dot-up   { background: var(--green); }
     .dot-down { background: var(--red); }
 
-    /* 响应时间火花图 */
+    /* Response time sparkline */
     .probe-sparkline-wrap {
       height: 48px;
       position: relative;
     }
 
-    /* 添加探针模态框 */
+    /* Add probe modal */
     #probe-modal .modal { width: min(480px, 95vw); }
 
-    /* ── 底部 ── */
+    /* ── Footer ── */
     footer {
       text-align: center;
       padding: 16px;
@@ -600,24 +600,23 @@
   <div class="logo">Watch<span>Tower</span></div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
     <div id="status-dot"></div>
-    <div id="status-text">未连接</div>
+    <div id="status-text">Disconnected</div>
   </div>
 </header>
 
-<!-- 标签导航栏 -->
 <nav class="tab-bar">
-  <button class="tab-btn active" data-tab="metrics">指标</button>
-  <button class="tab-btn" data-tab="logs">日志</button>
-  <button class="tab-btn" data-tab="alerts">告警</button>
-  <button class="tab-btn" data-tab="uptime">端点监控</button>
+  <button class="tab-btn active" data-tab="metrics">Metrics</button>
+  <button class="tab-btn" data-tab="logs">Logs</button>
+  <button class="tab-btn" data-tab="alerts">Alerts</button>
+  <button class="tab-btn" data-tab="uptime">Endpoints</button>
 </nav>
 
-<!-- ── 指标标签 ─────────────────────────────────────────────────────────── -->
+<!-- ── Metrics tab ──────────────────────────────────────────────────────── -->
 <div id="tab-metrics" class="tab-panel active">
 
-  <!-- CPU 面板 -->
+  <!-- CPU panel -->
   <div class="panel cpu">
-    <div class="panel-title">CPU 使用率</div>
+    <div class="panel-title">CPU Usage</div>
     <div class="panel-header">
       <div class="panel-value" id="val-cpu">—</div>
       <div class="panel-unit">%</div>
@@ -625,9 +624,9 @@
     <div class="chart-wrap"><canvas id="chart-cpu"></canvas></div>
   </div>
 
-  <!-- 内存面板 -->
+  <!-- Memory panel -->
   <div class="panel ram">
-    <div class="panel-title">内存使用率</div>
+    <div class="panel-title">Memory Usage</div>
     <div class="panel-header">
       <div class="panel-value" id="val-ram">—</div>
       <div class="panel-unit">%</div>
@@ -635,9 +634,9 @@
     <div class="chart-wrap"><canvas id="chart-ram"></canvas></div>
   </div>
 
-  <!-- 磁盘面板 -->
+  <!-- Disk panel -->
   <div class="panel disk">
-    <div class="panel-title">磁盘使用率</div>
+    <div class="panel-title">Disk Usage</div>
     <div class="panel-header">
       <div class="panel-value" id="val-disk">—</div>
       <div class="panel-unit">%</div>
@@ -645,9 +644,9 @@
     <div class="chart-wrap"><canvas id="chart-disk"></canvas></div>
   </div>
 
-  <!-- 内存字节面板 -->
+  <!-- Memory bytes panel -->
   <div class="panel custom">
-    <div class="panel-title">内存已用</div>
+    <div class="panel-title">Memory Used</div>
     <div class="panel-header">
       <div class="panel-value" id="val-membytes">—</div>
       <div class="panel-unit" id="unit-membytes">GB</div>
@@ -655,34 +654,33 @@
     <div class="chart-wrap"><canvas id="chart-membytes"></canvas></div>
   </div>
 
-  <!-- WQL 查询面板 -->
+  <!-- WQL query panel -->
   <div class="query-panel">
-    <div class="panel-title">WQL 查询</div>
+    <div class="panel-title">WQL Query</div>
     <div class="query-row">
       <input id="wql-input" type="text"
         placeholder="avg(cpu_usage_percent[5m])"
         value="avg(cpu_usage_percent[5m])" />
-      <button id="wql-btn">查询</button>
+      <button id="wql-btn">Run</button>
     </div>
-    <div id="wql-result"><span style="color:var(--muted)">输入 WQL 表达式后点击查询</span></div>
+    <div id="wql-result"><span style="color:var(--muted)">Enter a WQL expression and click Run</span></div>
   </div>
 
 </div><!-- /#tab-metrics -->
 
-<!-- ── 日志标签 ─────────────────────────────────────────────────────────── -->
+<!-- ── Logs tab ─────────────────────────────────────────────────────────── -->
 <div id="tab-logs" class="tab-panel">
 
   <div class="log-panel">
     <div class="panel-title">
-      日志查看器
+      Log Viewer
       <span id="log-new-badge" style="display:none;background:var(--accent);color:#0d1117;border-radius:10px;padding:1px 8px;font-size:0.72rem"></span>
     </div>
 
-    <!-- 搜索工具栏 -->
     <div class="log-toolbar">
-      <input id="log-search" type="text" placeholder="搜索日志消息（支持 /regex/ 正则）" />
+      <input id="log-search" type="text" placeholder="Search messages (/regex/ supported)" />
       <select id="log-level-filter">
-        <option value="">全部级别</option>
+        <option value="">All Levels</option>
         <option value="error">ERROR</option>
         <option value="warn">WARN</option>
         <option value="info">INFO</option>
@@ -691,19 +689,18 @@
       <span id="log-count"></span>
     </div>
 
-    <!-- 日志表格 -->
     <div class="log-table-wrap" id="log-table-wrap">
       <table id="log-table">
         <thead>
           <tr>
-            <th style="width:100px">时间</th>
-            <th style="width:70px">级别</th>
-            <th style="width:130px">来源</th>
-            <th>消息</th>
+            <th style="width:100px">Time</th>
+            <th style="width:70px">Level</th>
+            <th style="width:130px">Source</th>
+            <th>Message</th>
           </tr>
         </thead>
         <tbody id="log-tbody">
-          <tr><td colspan="4" id="log-empty">暂无日志数据</td></tr>
+          <tr><td colspan="4" id="log-empty">No logs yet</td></tr>
         </tbody>
       </table>
     </div>
@@ -711,61 +708,59 @@
 
 </div><!-- /#tab-logs -->
 
-<!-- ── 告警标签 ─────────────────────────────────────────────────────────── -->
+<!-- ── Alerts tab ───────────────────────────────────────────────────────── -->
 <div id="tab-alerts" class="tab-panel">
 
-  <!-- 告警面板 -->
+  <!-- Alert panel -->
   <div class="alert-panel">
     <div class="panel-title">
-      告警管理
+      Alert Manager
       <span id="active-count" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 8px;font-size:0.72rem"></span>
     </div>
     <div class="alert-toolbar">
-      <button id="create-alert-btn">+ 创建告警规则</button>
+      <button id="create-alert-btn">+ New Rule</button>
     </div>
-    <!-- 活跃告警 -->
-    <div id="active-alerts-list"><span class="no-alerts">暂无活跃告警</span></div>
-    <!-- 历史记录 -->
-    <div class="history-title">最近状态变化</div>
+    <div id="active-alerts-list"><span class="no-alerts">No active alerts</span></div>
+    <div class="history-title">Recent State Changes</div>
     <div id="alert-history-list"></div>
   </div>
 
 </div><!-- /#tab-alerts -->
 
-<!-- ── 端点监控标签 ──────────────────────────────────────────────────────── -->
+<!-- ── Endpoints tab ────────────────────────────────────────────────────── -->
 <div id="tab-uptime" class="tab-panel">
 
   <div class="probe-panel">
     <div class="probe-panel-title">
-      端点监控
+      Endpoint Monitoring
       <span id="probe-summary" style="font-size:0.8rem;font-weight:400;color:var(--muted)"></span>
     </div>
     <div class="probe-toolbar">
-      <button id="add-probe-btn">+ 添加探针</button>
-      <button id="probe-refresh-btn">↻ 刷新</button>
+      <button id="add-probe-btn">+ Add Probe</button>
+      <button id="probe-refresh-btn">↻ Refresh</button>
     </div>
     <div class="probe-list" id="probe-list">
-      <div style="color:var(--muted);font-size:0.88rem;padding:20px 0" id="probe-empty">暂无端点配置</div>
+      <div style="color:var(--muted);font-size:0.88rem;padding:20px 0" id="probe-empty">No endpoints configured</div>
     </div>
   </div>
 
 </div><!-- /#tab-uptime -->
 
-<!-- 添加探针模态框 -->
+<!-- Add Probe modal -->
 <div class="modal-overlay" id="probe-modal">
   <div class="modal">
-    <h2>添加端点探针</h2>
+    <h2>Add Endpoint Probe</h2>
     <div class="form-row">
-      <label>探针名称</label>
+      <label>Probe Name</label>
       <input id="pf-name" type="text" placeholder="my-api" />
     </div>
     <div class="form-row">
-      <label>目标 URL</label>
+      <label>Target URL</label>
       <input id="pf-url" type="url" placeholder="https://api.example.com/health" />
     </div>
     <div class="form-row-inline">
       <div class="form-row">
-        <label>HTTP 方法</label>
+        <label>HTTP Method</label>
         <select id="pf-method">
           <option value="GET">GET</option>
           <option value="POST">POST</option>
@@ -773,64 +768,64 @@
         </select>
       </div>
       <div class="form-row">
-        <label>期望状态码</label>
+        <label>Expected Status</label>
         <input id="pf-status" type="number" value="200" min="100" max="599" />
       </div>
     </div>
     <div class="form-row-inline">
       <div class="form-row">
-        <label>探测间隔（秒）</label>
+        <label>Interval (seconds)</label>
         <input id="pf-interval" type="number" value="30" min="5" />
       </div>
       <div class="form-row">
-        <label>超时（毫秒）</label>
+        <label>Timeout (ms)</label>
         <input id="pf-timeout" type="number" value="10000" min="100" />
       </div>
     </div>
     <div id="probe-modal-error" style="color:var(--red);font-size:0.82rem;display:none"></div>
     <div class="modal-actions">
-      <button class="btn-secondary" id="probe-modal-cancel">取消</button>
-      <button class="btn-primary" id="probe-modal-submit">添加</button>
+      <button class="btn-secondary" id="probe-modal-cancel">Cancel</button>
+      <button class="btn-primary" id="probe-modal-submit">Add</button>
     </div>
   </div>
 </div>
 
-<!-- 创建告警规则模态框（全局，不受标签影响） -->
+<!-- Create Alert Rule modal -->
 <div class="modal-overlay" id="alert-modal">
   <div class="modal">
-    <h2>创建告警规则</h2>
+    <h2>Create Alert Rule</h2>
     <div class="form-row">
-      <label>规则名称</label>
+      <label>Rule Name</label>
       <input id="f-name" type="text" placeholder="high_cpu" />
     </div>
     <div class="form-row">
-      <label>WQL 表达式</label>
+      <label>WQL Expression</label>
       <input id="f-expr" type="text" placeholder="avg(cpu_usage_percent[5m])" />
     </div>
     <div class="form-row-inline">
       <div class="form-row">
-        <label>运算符</label>
+        <label>Operator</label>
         <select id="f-op">
-          <option value=">">大于 (&gt;)</option>
-          <option value=">=">大于等于 (&gt;=)</option>
-          <option value="<">小于 (&lt;)</option>
-          <option value="<=">小于等于 (&lt;=)</option>
-          <option value="==">等于 (==)</option>
-          <option value="!=">不等于 (!=)</option>
+          <option value=">">Greater than (&gt;)</option>
+          <option value=">=">Greater or equal (&gt;=)</option>
+          <option value="<">Less than (&lt;)</option>
+          <option value="<=">Less or equal (&lt;=)</option>
+          <option value="==">Equal (==)</option>
+          <option value="!=">Not equal (!=)</option>
         </select>
       </div>
       <div class="form-row">
-        <label>阈值</label>
+        <label>Threshold</label>
         <input id="f-threshold" type="number" placeholder="80" step="any" />
       </div>
     </div>
     <div class="form-row-inline">
       <div class="form-row">
-        <label>持续时长（如 5m、1h，0 表示立即）</label>
+        <label>Duration (e.g. 5m, 1h; 0 = immediate)</label>
         <input id="f-duration" type="text" placeholder="0" value="0" />
       </div>
       <div class="form-row">
-        <label>严重级别</label>
+        <label>Severity</label>
         <select id="f-severity">
           <option value="critical">critical</option>
           <option value="warning">warning</option>
@@ -839,21 +834,21 @@
       </div>
     </div>
     <div class="form-row">
-      <label>Webhook URL（可选）</label>
+      <label>Webhook URL (optional)</label>
       <input id="f-webhook" type="url" placeholder="https://hooks.example.com/..." />
     </div>
     <div id="modal-error"></div>
     <div class="modal-actions">
-      <button class="btn-secondary" id="modal-cancel">取消</button>
-      <button class="btn-primary" id="modal-submit">创建</button>
+      <button class="btn-secondary" id="modal-cancel">Cancel</button>
+      <button class="btn-primary" id="modal-submit">Create</button>
     </div>
   </div>
 </div>
 
-<footer>WatchTower &copy; 2026 &mdash; 数据每 5 秒刷新 &mdash; 显示最近 5 分钟</footer>
+<footer>WatchTower &copy; 2026 &mdash; Data refreshes every 5 seconds &mdash; Last 5 minutes shown</footer>
 
 <script>
-// ── 通用工具 ──────────────────────────────────────────────────────────────────
+// ── Utilities ─────────────────────────────────────────────────────────────────
 function escapeHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -862,7 +857,7 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
-// ── 标签切换逻辑 ──────────────────────────────────────────────────────────────
+// ── Tab switching ─────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const tab = btn.dataset.tab;
@@ -871,7 +866,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('tab-' + tab).classList.add('active');
 
-    // 切换到日志标签时：清除新日志提示徽章，滚动到底部
+    // When switching to logs tab: clear new-log badge and scroll to bottom
     if (tab === 'logs') {
       clearLogBadge();
       scrollLogToBottom();
@@ -879,7 +874,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
-// ── Chart.js 通用配置 ──────────────────────────────────────────────────────────
+// ── Chart.js shared config ────────────────────────────────────────────────────
 const COLORS = {
   cpu:      { line: '#58a6ff', fill: 'rgba(88,166,255,0.15)' },
   ram:      { line: '#3fb950', fill: 'rgba(63,185,80,0.15)' },
@@ -930,7 +925,7 @@ const charts = {
   membytes: makeChart('chart-membytes', 'membytes'),
 };
 
-// ── 推入数据点到图表（保留最近 5 分钟 / 60 个点）───────────────────────────────
+// ── Push data point to chart (keep last 5 min / 60 points) ───────────────────
 const MAX_POINTS = 60;
 
 function pushPoint(chart, label, value) {
@@ -945,7 +940,7 @@ function pushPoint(chart, label, value) {
 
 function bytesToGB(bytes) { return (bytes / 1073741824).toFixed(2); }
 
-// ── WebSocket 连接与自动重连 ─────────────────────────────────────────────────
+// ── WebSocket connection with auto-reconnect ─────────────────────────────────
 const dot  = document.getElementById('status-dot');
 const stxt = document.getElementById('status-text');
 let ws, retryDelay = 1000;
@@ -956,18 +951,18 @@ function connect() {
 
   ws.onopen = () => {
     dot.classList.add('connected');
-    stxt.textContent = '已连接';
+    stxt.textContent = 'Connected';
     retryDelay = 1000;
   };
 
   ws.onmessage = (evt) => {
     try { handleMessage(JSON.parse(evt.data)); }
-    catch(e) { console.warn('消息解析失败', e); }
+    catch(e) { console.warn('message parse failed', e); }
   };
 
   ws.onclose = () => {
     dot.classList.remove('connected');
-    stxt.textContent = `重连中 (${retryDelay / 1000}s)…`;
+    stxt.textContent = `Reconnecting (${retryDelay / 1000}s)…`;
     setTimeout(connect, retryDelay);
     retryDelay = Math.min(retryDelay * 2, 30000);
   };
@@ -977,15 +972,15 @@ function connect() {
 
 connect();
 
-// ── 处理 WebSocket 推送消息 ──────────────────────────────────────────────────
+// ── Handle incoming WebSocket messages ───────────────────────────────────────
 function handleMessage(data) {
-  const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  const now = new Date().toLocaleTimeString('en-US', { hour12: false });
   const m = data.metrics || {};
 
-  // 更新告警面板
+  // Update alerts panel
   if (Array.isArray(data.alerts)) renderAlerts(data.alerts);
 
-  // 更新日志面板
+  // Update logs panel
   if (Array.isArray(data.logs) && data.logs.length > 0) {
     mergeLogs(data.logs);
   }
@@ -1009,7 +1004,7 @@ function handleMessage(data) {
   }
 }
 
-// ── 告警面板逻辑 ──────────────────────────────────────────────────────────────
+// ── Alert panel logic ─────────────────────────────────────────────────────────
 const ALERTS_API = 'http://localhost:9090/api/v1/alerts';
 
 function renderAlerts(alerts) {
@@ -1018,7 +1013,7 @@ function renderAlerts(alerts) {
   const firing = (alerts || []).filter(a => a.state === 'firing' || a.state === 'pending');
 
   if (firing.length === 0) {
-    list.innerHTML = '<span class="no-alerts">暂无活跃告警</span>';
+    list.innerHTML = '<span class="no-alerts">No active alerts</span>';
     countBadge.style.display = 'none';
   } else {
     countBadge.textContent = firing.length;
@@ -1038,7 +1033,7 @@ async function fetchAlertHistory() {
     const history = await resp.json();
     const container = document.getElementById('alert-history-list');
     if (!Array.isArray(history) || history.length === 0) {
-      container.innerHTML = '<div style="color:var(--muted);font-size:0.82rem">暂无历史记录</div>';
+      container.innerHTML = '<div style="color:var(--muted);font-size:0.82rem">No history yet</div>';
       return;
     }
     container.innerHTML = history.slice(0, 20).map(ev => {
@@ -1046,7 +1041,7 @@ async function fetchAlertHistory() {
                : ev.state === 'resolved' ? 'badge-resolved'
                : ev.state === 'pending'  ? 'badge-pending'
                : '';
-      const t = new Date(ev.timestamp).toLocaleTimeString('zh-CN', {hour12:false});
+      const t = new Date(ev.timestamp).toLocaleTimeString('en-US', {hour12:false});
       return `<div class="history-item">
         <span class="history-time">${t}</span>
         <span class="badge ${cls}" style="font-size:0.72rem;padding:2px 7px">${escapeHtml(ev.state)}</span>
@@ -1054,7 +1049,7 @@ async function fetchAlertHistory() {
         <span class="history-msg">${escapeHtml(ev.message||'')}</span>
       </div>`;
     }).join('');
-  } catch(e) { /* 告警服务可能尚未启动 */ }
+  } catch(e) { /* alert service may not be ready yet */ }
 }
 
 document.getElementById('create-alert-btn').addEventListener('click', () => {
@@ -1088,14 +1083,14 @@ document.getElementById('modal-submit').addEventListener('click', async () => {
     });
     const data = await resp.json();
     if (!resp.ok) {
-      errEl.textContent = data.error || '创建失败';
+      errEl.textContent = data.error || 'Failed to create';
       errEl.style.display = 'block';
       return;
     }
     document.getElementById('alert-modal').classList.remove('open');
     fetchAlertHistory();
   } catch(e) {
-    errEl.textContent = '网络错误: ' + String(e);
+    errEl.textContent = 'Network error: ' + String(e);
     errEl.style.display = 'block';
   }
 });
@@ -1103,16 +1098,16 @@ document.getElementById('modal-submit').addEventListener('click', async () => {
 fetchAlertHistory();
 setInterval(fetchAlertHistory, 15000);
 
-// ── 日志面板逻辑 ──────────────────────────────────────────────────────────────
+// ── Log panel logic ───────────────────────────────────────────────────────────
 
-// allLogs 存储所有已接收的日志（按时间升序，最新在末尾）
+// allLogs holds all received log entries in ascending timestamp order
 let allLogs = [];
-// lastLogTs 是已渲染日志的最大时间戳，用于去重
+// lastLogTs is the max timestamp already rendered, used for deduplication
 let lastLogTs = 0;
 
-// mergeLogs 将服务器推送的日志合并到本地列表（去重 + 限制上限）
+// mergeLogs merges server-pushed logs into the local list (deduplicate + cap size)
 function mergeLogs(incoming) {
-  // incoming 已是升序（最旧在前）
+  // incoming is already ascending (oldest first)
   let hasNew = false;
   for (const e of incoming) {
     if (e.timestamp > lastLogTs) {
@@ -1123,10 +1118,10 @@ function mergeLogs(incoming) {
   }
   if (!hasNew) return;
 
-  // 保留最近 2000 条
+  // Keep only the most recent 2000 entries
   if (allLogs.length > 2000) allLogs = allLogs.slice(allLogs.length - 2000);
 
-  // 若日志标签不是当前活跃标签，显示新日志提示
+  // Show badge on the Logs tab if it is not currently active
   const logsTab = document.getElementById('tab-logs');
   if (!logsTab.classList.contains('active')) {
     showLogBadge(allLogs.length);
@@ -1135,12 +1130,12 @@ function mergeLogs(incoming) {
   renderLogTable();
 }
 
-// renderLogTable 根据当前搜索/过滤条件渲染日志表格
+// renderLogTable renders/filters the log table based on current search inputs
 function renderLogTable() {
   const q     = document.getElementById('log-search').value.toLowerCase();
   const level = document.getElementById('log-level-filter').value;
 
-  // 过滤（展示时最新在底部：allLogs 已是升序）
+  // Filter (allLogs is ascending, newest at bottom)
   let filtered = allLogs;
   if (q) {
     filtered = filtered.filter(e => e.message.toLowerCase().includes(q));
@@ -1150,16 +1145,16 @@ function renderLogTable() {
   }
 
   const tbody = document.getElementById('log-tbody');
-  document.getElementById('log-count').textContent = `共 ${filtered.length} 条`;
+  document.getElementById('log-count').textContent = `${filtered.length} entries`;
 
   if (filtered.length === 0) {
     tbody.innerHTML = '<tr><td colspan="4" id="log-empty">' +
-      (allLogs.length === 0 ? '暂无日志数据' : '无匹配结果') + '</td></tr>';
+      (allLogs.length === 0 ? 'No logs yet' : 'No matches') + '</td></tr>';
     return;
   }
 
   tbody.innerHTML = filtered.map(e => {
-    const t = new Date(e.timestamp).toLocaleTimeString('zh-CN', {hour12:false});
+    const t = new Date(e.timestamp).toLocaleTimeString('en-US', {hour12:false});
     const lvl = (e.level || 'info').toLowerCase();
     const badgeCls = lvl === 'error' ? 'log-error'
                    : lvl === 'warn'  ? 'log-warn'
@@ -1173,7 +1168,7 @@ function renderLogTable() {
     </tr>`;
   }).join('');
 
-  // 自动滚动到最新日志（底部）
+  // Auto-scroll to newest log (bottom)
   scrollLogToBottom();
 }
 
@@ -1193,11 +1188,11 @@ function clearLogBadge() {
   badge.style.display = 'none';
 }
 
-// 搜索/过滤实时响应
+// Live search/filter
 document.getElementById('log-search').addEventListener('input', renderLogTable);
 document.getElementById('log-level-filter').addEventListener('change', renderLogTable);
 
-// ── WQL 查询功能 ──────────────────────────────────────────────────────────────
+// ── WQL query ─────────────────────────────────────────────────────────────────
 const wqlInput  = document.getElementById('wql-input');
 const wqlBtn    = document.getElementById('wql-btn');
 const wqlResult = document.getElementById('wql-result');
@@ -1206,17 +1201,17 @@ const QUERY_URL = 'http://localhost:9090/api/v1/query';
 async function runQuery() {
   const q = wqlInput.value.trim();
   if (!q) return;
-  wqlResult.innerHTML = '<span style="color:var(--muted)">查询中…</span>';
+  wqlResult.innerHTML = '<span style="color:var(--muted)">Running…</span>';
   try {
     const resp = await fetch(`${QUERY_URL}?q=${encodeURIComponent(q)}`);
     const data = await resp.json();
     if (data.error) {
-      wqlResult.innerHTML = `<span class="result-error">错误: ${escapeHtml(data.error)}</span>`;
+      wqlResult.innerHTML = `<span class="result-error">Error: ${escapeHtml(data.error)}</span>`;
       return;
     }
     renderResult(data);
   } catch(e) {
-    wqlResult.innerHTML = `<span class="result-error">请求失败: ${escapeHtml(String(e))}</span>`;
+    wqlResult.innerHTML = `<span class="result-error">Request failed: ${escapeHtml(String(e))}</span>`;
   }
 }
 
@@ -1228,13 +1223,13 @@ function renderResult(data) {
     wqlResult.innerHTML = `<div class="${cls}">${data.bool ? '✓ true' : '✗ false'}</div>`;
   } else if (data.type === 'vector' && Array.isArray(data.vector)) {
     if (data.vector.length === 0) {
-      wqlResult.innerHTML = '<span style="color:var(--muted)">结果为空</span>';
+      wqlResult.innerHTML = '<span style="color:var(--muted)">Empty result</span>';
       return;
     }
     const keys = [...new Set(data.vector.flatMap(s => Object.keys(s.labels || {})))].sort();
     let html = '<table><thead><tr>';
     keys.forEach(k => { html += `<th>${escapeHtml(k)}</th>`; });
-    html += '<th>值</th></tr></thead><tbody>';
+    html += '<th>Value</th></tr></thead><tbody>';
     data.vector.forEach(s => {
       html += '<tr>';
       keys.forEach(k => { html += `<td>${escapeHtml(s.labels?.[k] ?? '')}</td>`; });
@@ -1250,13 +1245,13 @@ function renderResult(data) {
 wqlBtn.addEventListener('click', runQuery);
 wqlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') runQuery(); });
 
-// ── 端点监控逻辑 ──────────────────────────────────────────────────────────────
+// ── Endpoint monitoring logic ─────────────────────────────────────────────────
 const PROBES_API = 'http://localhost:9090/api/v1/probes';
 
-// sparklineCharts 保存每个探针的 Chart.js 实例（防止重复创建）
+// sparklineCharts stores per-probe Chart.js instances to prevent recreation
 const sparklineCharts = {};
 
-// fetchProbes 拉取探针列表并渲染卡片
+// fetchProbes fetches the probe list and renders cards
 async function fetchProbes() {
   try {
     const resp = await fetch(PROBES_API);
@@ -1264,11 +1259,11 @@ async function fetchProbes() {
     const probes = await resp.json();
     renderProbeList(probes || []);
   } catch(e) {
-    // 探针 API 可能暂未初始化，静默忽略
+    // probe API may not be ready yet, silently ignore
   }
 }
 
-// renderProbeList 渲染/更新所有探针卡片
+// renderProbeList renders/updates all probe cards
 function renderProbeList(probes) {
   const container = document.getElementById('probe-list');
   const emptyEl   = document.getElementById('probe-empty');
@@ -1279,18 +1274,18 @@ function renderProbeList(probes) {
   }
   if (emptyEl) emptyEl.style.display = 'none';
 
-  // 更新摘要（up/total）
+  // Update up/total summary
   const upCount = probes.filter(p => p.status === 'up').length;
   const summary = document.getElementById('probe-summary');
-  if (summary) summary.textContent = `${upCount} / ${probes.length} 在线`;
+  if (summary) summary.textContent = `${upCount} / ${probes.length} up`;
 
-  // 已存在的卡片名称集合
+  // Names of cards already in the DOM
   const existingNames = new Set(
     [...container.querySelectorAll('.probe-card')].map(c => c.dataset.name)
   );
   const incomingNames = new Set(probes.map(p => p.name));
 
-  // 移除已删除探针的卡片
+  // Remove cards for deleted probes
   existingNames.forEach(name => {
     if (!incomingNames.has(name)) {
       document.getElementById('probe-card-' + name)?.remove();
@@ -1301,7 +1296,7 @@ function renderProbeList(probes) {
     }
   });
 
-  // 创建或更新卡片
+  // Create or update cards
   probes.forEach(probe => {
     if (!document.getElementById('probe-card-' + probe.name)) {
       const card = document.createElement('div');
@@ -1315,7 +1310,7 @@ function renderProbeList(probes) {
   });
 }
 
-// probeCardTemplate 生成探针卡片的静态 HTML 骨架（动态数据通过 updateProbeCardData 填充）
+// probeCardTemplate returns the static HTML skeleton for a probe card (dynamic data filled by updateProbeCardData)
 function probeCardTemplate(name, url, method) {
   const safeId = escapeHtml(name);
   return `
@@ -1336,7 +1331,7 @@ function probeCardTemplate(name, url, method) {
     </div>`;
 }
 
-// updateProbeCardData 更新探针卡片的动态内容（状态、响应时间、圆点、火花图）
+// updateProbeCardData updates dynamic card content (status, response time, dots, sparkline)
 function updateProbeCardData(probe) {
   const id = probe.name;
   const badge   = document.getElementById('pbadge-'   + id);
@@ -1344,22 +1339,22 @@ function updateProbeCardData(probe) {
   const uptimeEl= document.getElementById('puptime-'  + id);
   const dotsEl  = document.getElementById('pdots-'    + id);
 
-  // 状态徽章
+  // Status badge
   if (badge) {
     const st = probe.status || 'unknown';
     badge.textContent = st === 'up' ? 'UP' : st === 'down' ? 'DOWN' : '?';
     badge.className = 'probe-status-badge probe-' + st;
   }
-  // 响应时间
+  // Response time
   if (rtEl) {
     rtEl.textContent = probe.status === 'unknown' ? '—' : probe.response_ms + 'ms';
   }
-  // 可用率
+  // Uptime percentage
   if (uptimeEl) {
     uptimeEl.textContent = probe.status === 'unknown' ? '—'
       : (probe.uptime_pct !== undefined ? probe.uptime_pct.toFixed(1) + '%' : '—');
   }
-  // 状态历史圆点（升序：最旧在左）
+  // Status history dots (ascending: oldest on left)
   if (dotsEl) {
     const hist = probe.recent_history || [];
     dotsEl.innerHTML = hist.map(r =>
@@ -1367,11 +1362,11 @@ function updateProbeCardData(probe) {
              title="${r.status} ${r.response_ms}ms"></span>`
     ).join('');
   }
-  // 响应时间火花图
+  // Response time sparkline
   updateSparkline(probe);
 }
 
-// updateSparkline 创建或更新 Chart.js 火花图
+// updateSparkline creates or updates the Chart.js sparkline for a probe
 function updateSparkline(probe) {
   const canvas = document.getElementById('sparkline-' + probe.name);
   if (!canvas) return;
@@ -1424,7 +1419,7 @@ function updateSparkline(probe) {
   }
 }
 
-// 添加探针模态框逻辑
+// Add probe modal logic
 document.getElementById('add-probe-btn').addEventListener('click', () => {
   document.getElementById('probe-modal').classList.add('open');
   document.getElementById('probe-modal-error').style.display = 'none';
@@ -1456,28 +1451,28 @@ document.getElementById('probe-modal-submit').addEventListener('click', async ()
     });
     const data = await resp.json();
     if (!resp.ok) {
-      errEl.textContent = data.error || '添加失败';
+      errEl.textContent = data.error || 'Failed to add';
       errEl.style.display = 'block';
       return;
     }
     document.getElementById('probe-modal').classList.remove('open');
     fetchProbes();
   } catch(e) {
-    errEl.textContent = '网络错误: ' + String(e);
+    errEl.textContent = 'Network error: ' + String(e);
     errEl.style.display = 'block';
   }
 });
 
 document.getElementById('probe-refresh-btn').addEventListener('click', fetchProbes);
 
-// 切换到 Uptime 标签时刷新
+// Refresh when switching to the Endpoints tab
 document.querySelectorAll('.tab-btn').forEach(btn => {
   if (btn.dataset.tab === 'uptime') {
     btn.addEventListener('click', fetchProbes);
   }
 });
 
-// 初始加载 + 每 30 秒刷新一次
+// Initial load + refresh every 30 seconds
 fetchProbes();
 setInterval(fetchProbes, 30000);
 </script>
