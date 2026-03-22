@@ -55,12 +55,54 @@
     #status-dot.connected { background: var(--green); }
     #status-text { font-size: 0.8rem; color: var(--muted); }
 
-    /* ── 主体网格 ── */
-    main {
+    /* ── 标签导航 ── */
+    .tab-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      gap: 0;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 12px 20px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    /* ── 标签面板 ── */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── 指标标签布局 ── */
+    #tab-metrics {
       padding: 24px;
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
       gap: 20px;
+    }
+
+    /* ── 告警标签布局 ── */
+    #tab-alerts {
+      padding: 24px;
+    }
+
+    /* ── 日志标签布局 ── */
+    #tab-logs {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
     }
 
     /* ── 面板卡片 ── */
@@ -114,7 +156,6 @@
       border: 1px solid var(--border);
       border-radius: 10px;
       padding: 20px;
-      grid-column: 1 / -1;
     }
     .alert-panel .panel-title {
       font-size: 0.78rem;
@@ -146,6 +187,7 @@
       transition: opacity 0.15s;
     }
     #create-alert-btn:hover { opacity: 0.85; }
+
     /* 告警徽章 */
     .badge {
       display: inline-flex;
@@ -175,7 +217,7 @@
       margin-bottom: 8px;
     }
     #alert-history-list {
-      max-height: 180px;
+      max-height: 240px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
@@ -247,7 +289,7 @@
       border: 1px solid var(--border);
       border-radius: 10px;
       padding: 20px;
-      grid-column: 1 / -1; /* 跨越全部列 */
+      grid-column: 1 / -1;
     }
     .query-panel .panel-title {
       font-size: 0.78rem;
@@ -310,6 +352,126 @@
     }
     #wql-result th { color: var(--muted); font-weight: 600; background: var(--bg); }
 
+    /* ── 日志面板 ── */
+    .log-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .log-panel .panel-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .log-toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    #log-search {
+      flex: 1;
+      min-width: 200px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 12px;
+      color: var(--text);
+      font-size: 0.9rem;
+      outline: none;
+    }
+    #log-search:focus { border-color: var(--accent); }
+    #log-search::placeholder { color: var(--muted); }
+    #log-level-filter {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      color: var(--text);
+      font-size: 0.9rem;
+      outline: none;
+      cursor: pointer;
+    }
+    #log-level-filter:focus { border-color: var(--accent); }
+    #log-count {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-left: auto;
+    }
+
+    /* 日志表格 */
+    .log-table-wrap {
+      max-height: 480px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .log-table-wrap::-webkit-scrollbar { width: 6px; }
+    .log-table-wrap::-webkit-scrollbar-track { background: var(--bg); }
+    .log-table-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    #log-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+      font-family: "Fira Code", "Consolas", monospace;
+    }
+    #log-table thead th {
+      background: var(--bg);
+      color: var(--muted);
+      font-weight: 600;
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    #log-table tbody tr {
+      border-bottom: 1px solid rgba(48,54,61,0.5);
+      transition: background 0.1s;
+    }
+    #log-table tbody tr:hover { background: rgba(48,54,61,0.4); }
+    #log-table tbody tr:last-child { border-bottom: none; }
+    #log-table td {
+      padding: 7px 12px;
+      vertical-align: top;
+    }
+    .log-time  { color: var(--muted); white-space: nowrap; min-width: 90px; }
+    .log-src   { color: var(--purple); white-space: nowrap; }
+    .log-msg   { word-break: break-word; }
+
+    /* 日志级别徽章 */
+    .log-badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .log-error { background: rgba(248,81,73,0.2);  color: var(--red);    border: 1px solid rgba(248,81,73,0.4); }
+    .log-warn  { background: rgba(210,153,34,0.2); color: var(--yellow); border: 1px solid rgba(210,153,34,0.4); }
+    .log-info  { background: rgba(88,166,255,0.2); color: var(--accent); border: 1px solid rgba(88,166,255,0.4); }
+    .log-debug { background: rgba(139,148,158,0.1);color: var(--muted);  border: 1px solid rgba(139,148,158,0.3); }
+
+    #log-empty {
+      text-align: center;
+      padding: 40px 0;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
     /* ── 底部 ── */
     footer {
       text-align: center;
@@ -330,7 +492,16 @@
   </div>
 </header>
 
-<main>
+<!-- 标签导航栏 -->
+<nav class="tab-bar">
+  <button class="tab-btn active" data-tab="metrics">指标</button>
+  <button class="tab-btn" data-tab="logs">日志</button>
+  <button class="tab-btn" data-tab="alerts">告警</button>
+</nav>
+
+<!-- ── 指标标签 ─────────────────────────────────────────────────────────── -->
+<div id="tab-metrics" class="tab-panel active">
+
   <!-- CPU 面板 -->
   <div class="panel cpu">
     <div class="panel-title">CPU 使用率</div>
@@ -371,6 +542,65 @@
     <div class="chart-wrap"><canvas id="chart-membytes"></canvas></div>
   </div>
 
+  <!-- WQL 查询面板 -->
+  <div class="query-panel">
+    <div class="panel-title">WQL 查询</div>
+    <div class="query-row">
+      <input id="wql-input" type="text"
+        placeholder="avg(cpu_usage_percent[5m])"
+        value="avg(cpu_usage_percent[5m])" />
+      <button id="wql-btn">查询</button>
+    </div>
+    <div id="wql-result"><span style="color:var(--muted)">输入 WQL 表达式后点击查询</span></div>
+  </div>
+
+</div><!-- /#tab-metrics -->
+
+<!-- ── 日志标签 ─────────────────────────────────────────────────────────── -->
+<div id="tab-logs" class="tab-panel">
+
+  <div class="log-panel">
+    <div class="panel-title">
+      日志查看器
+      <span id="log-new-badge" style="display:none;background:var(--accent);color:#0d1117;border-radius:10px;padding:1px 8px;font-size:0.72rem"></span>
+    </div>
+
+    <!-- 搜索工具栏 -->
+    <div class="log-toolbar">
+      <input id="log-search" type="text" placeholder="搜索日志消息（支持 /regex/ 正则）" />
+      <select id="log-level-filter">
+        <option value="">全部级别</option>
+        <option value="error">ERROR</option>
+        <option value="warn">WARN</option>
+        <option value="info">INFO</option>
+        <option value="debug">DEBUG</option>
+      </select>
+      <span id="log-count"></span>
+    </div>
+
+    <!-- 日志表格 -->
+    <div class="log-table-wrap" id="log-table-wrap">
+      <table id="log-table">
+        <thead>
+          <tr>
+            <th style="width:100px">时间</th>
+            <th style="width:70px">级别</th>
+            <th style="width:130px">来源</th>
+            <th>消息</th>
+          </tr>
+        </thead>
+        <tbody id="log-tbody">
+          <tr><td colspan="4" id="log-empty">暂无日志数据</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /#tab-logs -->
+
+<!-- ── 告警标签 ─────────────────────────────────────────────────────────── -->
+<div id="tab-alerts" class="tab-panel">
+
   <!-- 告警面板 -->
   <div class="alert-panel">
     <div class="panel-title">
@@ -387,77 +617,92 @@
     <div id="alert-history-list"></div>
   </div>
 
-  <!-- 创建告警规则模态框 -->
-  <div class="modal-overlay" id="alert-modal">
-    <div class="modal">
-      <h2>创建告警规则</h2>
-      <div class="form-row">
-        <label>规则名称</label>
-        <input id="f-name" type="text" placeholder="high_cpu" />
-      </div>
-      <div class="form-row">
-        <label>WQL 表达式</label>
-        <input id="f-expr" type="text" placeholder="avg(cpu_usage_percent[5m])" />
-      </div>
-      <div class="form-row-inline">
-        <div class="form-row">
-          <label>运算符</label>
-          <select id="f-op">
-            <option value=">">大于 (&gt;)</option>
-            <option value=">=">大于等于 (&gt;=)</option>
-            <option value="<">小于 (&lt;)</option>
-            <option value="<=">小于等于 (&lt;=)</option>
-            <option value="==">等于 (==)</option>
-            <option value="!=">不等于 (!=)</option>
-          </select>
-        </div>
-        <div class="form-row">
-          <label>阈值</label>
-          <input id="f-threshold" type="number" placeholder="80" step="any" />
-        </div>
-      </div>
-      <div class="form-row-inline">
-        <div class="form-row">
-          <label>持续时长（如 5m、1h，0 表示立即）</label>
-          <input id="f-duration" type="text" placeholder="0" value="0" />
-        </div>
-        <div class="form-row">
-          <label>严重级别</label>
-          <select id="f-severity">
-            <option value="critical">critical</option>
-            <option value="warning">warning</option>
-            <option value="info">info</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-row">
-        <label>Webhook URL（可选）</label>
-        <input id="f-webhook" type="url" placeholder="https://hooks.example.com/..." />
-      </div>
-      <div id="modal-error"></div>
-      <div class="modal-actions">
-        <button class="btn-secondary" id="modal-cancel">取消</button>
-        <button class="btn-primary" id="modal-submit">创建</button>
-      </div>
-    </div>
-  </div>
+</div><!-- /#tab-alerts -->
 
-  <!-- WQL 查询面板 -->
-  <div class="query-panel">
-    <div class="panel-title">WQL 查询</div>
-    <div class="query-row">
-      <input id="wql-input" type="text"
-        placeholder="avg(cpu_usage_percent[5m])"
-        value="avg(cpu_usage_percent[5m])" />
-      <button id="wql-btn">查询</button>
+<!-- 创建告警规则模态框（全局，不受标签影响） -->
+<div class="modal-overlay" id="alert-modal">
+  <div class="modal">
+    <h2>创建告警规则</h2>
+    <div class="form-row">
+      <label>规则名称</label>
+      <input id="f-name" type="text" placeholder="high_cpu" />
     </div>
-    <div id="wql-result"><span style="color:var(--muted)">输入 WQL 表达式后点击查询</span></div>
+    <div class="form-row">
+      <label>WQL 表达式</label>
+      <input id="f-expr" type="text" placeholder="avg(cpu_usage_percent[5m])" />
+    </div>
+    <div class="form-row-inline">
+      <div class="form-row">
+        <label>运算符</label>
+        <select id="f-op">
+          <option value=">">大于 (&gt;)</option>
+          <option value=">=">大于等于 (&gt;=)</option>
+          <option value="<">小于 (&lt;)</option>
+          <option value="<=">小于等于 (&lt;=)</option>
+          <option value="==">等于 (==)</option>
+          <option value="!=">不等于 (!=)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>阈值</label>
+        <input id="f-threshold" type="number" placeholder="80" step="any" />
+      </div>
+    </div>
+    <div class="form-row-inline">
+      <div class="form-row">
+        <label>持续时长（如 5m、1h，0 表示立即）</label>
+        <input id="f-duration" type="text" placeholder="0" value="0" />
+      </div>
+      <div class="form-row">
+        <label>严重级别</label>
+        <select id="f-severity">
+          <option value="critical">critical</option>
+          <option value="warning">warning</option>
+          <option value="info">info</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Webhook URL（可选）</label>
+      <input id="f-webhook" type="url" placeholder="https://hooks.example.com/..." />
+    </div>
+    <div id="modal-error"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="modal-cancel">取消</button>
+      <button class="btn-primary" id="modal-submit">创建</button>
+    </div>
   </div>
-</main>
+</div>
 
 <footer>WatchTower &copy; 2026 &mdash; 数据每 5 秒刷新 &mdash; 显示最近 5 分钟</footer>
 
 <script>
+// ── 通用工具 ──────────────────────────────────────────────────────────────────
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ── 标签切换逻辑 ──────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + tab).classList.add('active');
+
+    // 切换到日志标签时：清除新日志提示徽章，滚动到底部
+    if (tab === 'logs') {
+      clearLogBadge();
+      scrollLogToBottom();
+    }
+  });
+});
+
 // ── Chart.js 通用配置 ──────────────────────────────────────────────────────────
 const COLORS = {
   cpu:      { line: '#58a6ff', fill: 'rgba(88,166,255,0.15)' },
@@ -519,45 +764,10 @@ function pushPoint(chart, label, value) {
     chart.data.labels.shift();
     chart.data.datasets[0].data.shift();
   }
-  chart.update('none'); // 关闭动画以减少开销
+  chart.update('none');
 }
 
-// ── 将字节转换为可读字符串 ───────────────────────────────────────────────────────
 function bytesToGB(bytes) { return (bytes / 1073741824).toFixed(2); }
-
-// ── 处理来自 WebSocket 的推送数据 ─────────────────────────────────────────────
-function handleMessage(data) {
-  const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-
-  // data 格式: { metrics: {...}, ts: ..., alerts: [...] }
-  const m = data.metrics || {};
-
-  // 更新告警面板
-  if (Array.isArray(data.alerts)) {
-    renderAlerts(data.alerts);
-  }
-
-  if (m.cpu_usage_percent !== undefined) {
-    const v = +m.cpu_usage_percent.toFixed(1);
-    document.getElementById('val-cpu').textContent = v;
-    pushPoint(charts.cpu, now, v);
-  }
-  if (m.memory_usage_percent !== undefined) {
-    const v = +m.memory_usage_percent.toFixed(1);
-    document.getElementById('val-ram').textContent = v;
-    pushPoint(charts.ram, now, v);
-  }
-  if (m.disk_usage_percent !== undefined) {
-    const v = +m.disk_usage_percent.toFixed(1);
-    document.getElementById('val-disk').textContent = v;
-    pushPoint(charts.disk, now, v);
-  }
-  if (m.memory_used_bytes !== undefined) {
-    const gb = +bytesToGB(m.memory_used_bytes);
-    document.getElementById('val-membytes').textContent = gb;
-    pushPoint(charts.membytes, now, gb);
-  }
-}
 
 // ── WebSocket 连接与自动重连 ─────────────────────────────────────────────────
 const dot  = document.getElementById('status-dot');
@@ -575,18 +785,15 @@ function connect() {
   };
 
   ws.onmessage = (evt) => {
-    try {
-      handleMessage(JSON.parse(evt.data));
-    } catch(e) {
-      console.warn('消息解析失败', e);
-    }
+    try { handleMessage(JSON.parse(evt.data)); }
+    catch(e) { console.warn('消息解析失败', e); }
   };
 
   ws.onclose = () => {
     dot.classList.remove('connected');
     stxt.textContent = `重连中 (${retryDelay / 1000}s)…`;
     setTimeout(connect, retryDelay);
-    retryDelay = Math.min(retryDelay * 2, 30000); // 指数退避，上限 30s
+    retryDelay = Math.min(retryDelay * 2, 30000);
   };
 
   ws.onerror = () => ws.close();
@@ -594,10 +801,41 @@ function connect() {
 
 connect();
 
-// ── 告警面板 ─────────────────────────────────────────────────────────────────
+// ── 处理 WebSocket 推送消息 ──────────────────────────────────────────────────
+function handleMessage(data) {
+  const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  const m = data.metrics || {};
+
+  // 更新告警面板
+  if (Array.isArray(data.alerts)) renderAlerts(data.alerts);
+
+  // 更新日志面板
+  if (Array.isArray(data.logs) && data.logs.length > 0) {
+    mergeLogs(data.logs);
+  }
+
+  if (m.cpu_usage_percent !== undefined) {
+    document.getElementById('val-cpu').textContent = +m.cpu_usage_percent.toFixed(1);
+    pushPoint(charts.cpu, now, +m.cpu_usage_percent.toFixed(1));
+  }
+  if (m.memory_usage_percent !== undefined) {
+    document.getElementById('val-ram').textContent = +m.memory_usage_percent.toFixed(1);
+    pushPoint(charts.ram, now, +m.memory_usage_percent.toFixed(1));
+  }
+  if (m.disk_usage_percent !== undefined) {
+    document.getElementById('val-disk').textContent = +m.disk_usage_percent.toFixed(1);
+    pushPoint(charts.disk, now, +m.disk_usage_percent.toFixed(1));
+  }
+  if (m.memory_used_bytes !== undefined) {
+    const gb = +bytesToGB(m.memory_used_bytes);
+    document.getElementById('val-membytes').textContent = gb;
+    pushPoint(charts.membytes, now, gb);
+  }
+}
+
+// ── 告警面板逻辑 ──────────────────────────────────────────────────────────────
 const ALERTS_API = 'http://localhost:9090/api/v1/alerts';
 
-// renderAlerts 根据 WebSocket 推送的告警数据刷新告警面板
 function renderAlerts(alerts) {
   const list = document.getElementById('active-alerts-list');
   const countBadge = document.getElementById('active-count');
@@ -618,7 +856,6 @@ function renderAlerts(alerts) {
   }
 }
 
-// fetchAlertHistory 拉取历史记录并渲染
 async function fetchAlertHistory() {
   try {
     const resp = await fetch(`${ALERTS_API}/history`);
@@ -641,12 +878,9 @@ async function fetchAlertHistory() {
         <span class="history-msg">${escapeHtml(ev.message||'')}</span>
       </div>`;
     }).join('');
-  } catch(e) {
-    // 忽略网络错误（告警服务可能尚未启动）
-  }
+  } catch(e) { /* 告警服务可能尚未启动 */ }
 }
 
-// 创建告警模态框逻辑
 document.getElementById('create-alert-btn').addEventListener('click', () => {
   document.getElementById('alert-modal').classList.add('open');
   document.getElementById('modal-error').style.display = 'none';
@@ -662,7 +896,6 @@ document.getElementById('alert-modal').addEventListener('click', (e) => {
 document.getElementById('modal-submit').addEventListener('click', async () => {
   const errEl = document.getElementById('modal-error');
   errEl.style.display = 'none';
-
   const rule = {
     name:           document.getElementById('f-name').value.trim(),
     wql_expression: document.getElementById('f-expr').value.trim(),
@@ -672,11 +905,9 @@ document.getElementById('modal-submit').addEventListener('click', async () => {
     severity:       document.getElementById('f-severity').value,
     webhook_url:    document.getElementById('f-webhook').value.trim(),
   };
-
   try {
     const resp = await fetch(`${ALERTS_API}/rules`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(rule),
     });
     const data = await resp.json();
@@ -693,17 +924,107 @@ document.getElementById('modal-submit').addEventListener('click', async () => {
   }
 });
 
-// 启动时拉取历史记录
 fetchAlertHistory();
-// 每 15 秒刷新一次历史记录
 setInterval(fetchAlertHistory, 15000);
+
+// ── 日志面板逻辑 ──────────────────────────────────────────────────────────────
+
+// allLogs 存储所有已接收的日志（按时间升序，最新在末尾）
+let allLogs = [];
+// lastLogTs 是已渲染日志的最大时间戳，用于去重
+let lastLogTs = 0;
+
+// mergeLogs 将服务器推送的日志合并到本地列表（去重 + 限制上限）
+function mergeLogs(incoming) {
+  // incoming 已是升序（最旧在前）
+  let hasNew = false;
+  for (const e of incoming) {
+    if (e.timestamp > lastLogTs) {
+      allLogs.push(e);
+      lastLogTs = e.timestamp;
+      hasNew = true;
+    }
+  }
+  if (!hasNew) return;
+
+  // 保留最近 2000 条
+  if (allLogs.length > 2000) allLogs = allLogs.slice(allLogs.length - 2000);
+
+  // 若日志标签不是当前活跃标签，显示新日志提示
+  const logsTab = document.getElementById('tab-logs');
+  if (!logsTab.classList.contains('active')) {
+    showLogBadge(allLogs.length);
+  }
+
+  renderLogTable();
+}
+
+// renderLogTable 根据当前搜索/过滤条件渲染日志表格
+function renderLogTable() {
+  const q     = document.getElementById('log-search').value.toLowerCase();
+  const level = document.getElementById('log-level-filter').value;
+
+  // 过滤（展示时最新在底部：allLogs 已是升序）
+  let filtered = allLogs;
+  if (q) {
+    filtered = filtered.filter(e => e.message.toLowerCase().includes(q));
+  }
+  if (level) {
+    filtered = filtered.filter(e => e.level === level);
+  }
+
+  const tbody = document.getElementById('log-tbody');
+  document.getElementById('log-count').textContent = `共 ${filtered.length} 条`;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" id="log-empty">' +
+      (allLogs.length === 0 ? '暂无日志数据' : '无匹配结果') + '</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(e => {
+    const t = new Date(e.timestamp).toLocaleTimeString('zh-CN', {hour12:false});
+    const lvl = (e.level || 'info').toLowerCase();
+    const badgeCls = lvl === 'error' ? 'log-error'
+                   : lvl === 'warn'  ? 'log-warn'
+                   : lvl === 'debug' ? 'log-debug'
+                   : 'log-info';
+    return `<tr>
+      <td class="log-time">${t}</td>
+      <td><span class="log-badge ${badgeCls}">${escapeHtml(lvl)}</span></td>
+      <td class="log-src">${escapeHtml(e.source || '')}</td>
+      <td class="log-msg">${escapeHtml(e.message || '')}</td>
+    </tr>`;
+  }).join('');
+
+  // 自动滚动到最新日志（底部）
+  scrollLogToBottom();
+}
+
+function scrollLogToBottom() {
+  const wrap = document.getElementById('log-table-wrap');
+  if (wrap) wrap.scrollTop = wrap.scrollHeight;
+}
+
+function showLogBadge(count) {
+  const badge = document.getElementById('log-new-badge');
+  badge.textContent = `${count}`;
+  badge.style.display = 'inline';
+}
+
+function clearLogBadge() {
+  const badge = document.getElementById('log-new-badge');
+  badge.style.display = 'none';
+}
+
+// 搜索/过滤实时响应
+document.getElementById('log-search').addEventListener('input', renderLogTable);
+document.getElementById('log-level-filter').addEventListener('change', renderLogTable);
 
 // ── WQL 查询功能 ──────────────────────────────────────────────────────────────
 const wqlInput  = document.getElementById('wql-input');
 const wqlBtn    = document.getElementById('wql-btn');
 const wqlResult = document.getElementById('wql-result');
-
-// WQL 查询接口与摄入服务共享端口 9090
 const QUERY_URL = 'http://localhost:9090/api/v1/query';
 
 async function runQuery() {
@@ -718,7 +1039,7 @@ async function runQuery() {
       return;
     }
     renderResult(data);
-  } catch (e) {
+  } catch(e) {
     wqlResult.innerHTML = `<span class="result-error">请求失败: ${escapeHtml(String(e))}</span>`;
   }
 }
@@ -734,7 +1055,6 @@ function renderResult(data) {
       wqlResult.innerHTML = '<span style="color:var(--muted)">结果为空</span>';
       return;
     }
-    // 收集所有标签键
     const keys = [...new Set(data.vector.flatMap(s => Object.keys(s.labels || {})))].sort();
     let html = '<table><thead><tr>';
     keys.forEach(k => { html += `<th>${escapeHtml(k)}</th>`; });
@@ -749,14 +1069,6 @@ function renderResult(data) {
   } else {
     wqlResult.innerHTML = `<pre style="color:var(--muted);font-size:0.8rem">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
   }
-}
-
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 wqlBtn.addEventListener('click', runQuery);

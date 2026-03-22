@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/apaqa/watchtower/internal/alert"
+	"github.com/apaqa/watchtower/internal/logstore"
 	"github.com/apaqa/watchtower/internal/model"
 	"github.com/apaqa/watchtower/internal/tsdb"
 	"github.com/apaqa/watchtower/internal/wql"
@@ -17,7 +19,8 @@ import (
 // Server 负责接收 HTTP POST 请求并将数据写入 TSDB
 type Server struct {
 	db       *tsdb.TSDB
-	mux      *http.ServeMux // 保留对路由器的引用，以便后续注册告警路由
+	logStore *logstore.Store // 可选的日志存储；由 RegisterLogStore 注入
+	mux      *http.ServeMux  // 保留对路由器的引用，以便后续注册路由
 	httpSrv  *http.Server
 	listener net.Listener
 }
@@ -55,6 +58,15 @@ func (s *Server) Addr() string {
 // 设计为独立方法，避免修改 New() 签名影响现有测试
 func (s *Server) RegisterAlertEngine(engine *alert.Engine) {
 	alert.RegisterRoutes(s.mux, engine)
+}
+
+// RegisterLogStore 注入日志存储并注册日志 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterLogStore(ls *logstore.Store) {
+	s.logStore = ls
+	// POST/GET /api/v1/logs — 批量写入 / 搜索日志
+	s.mux.HandleFunc("/api/v1/logs", s.handleLogs)
+	// POST /api/v1/logs/single — 写入单条日志（方便客户端调用）
+	s.mux.HandleFunc("/api/v1/logs/single", s.handleLogSingle)
 }
 
 // Start 启动 HTTP 服务（阻塞，应在 goroutine 中调用）
@@ -131,5 +143,82 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	// 写入 TSDB
 	s.db.Write(points)
 
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// setCORSHeaders 设置通用 CORS 响应头（允许仪表板跨域调用）
+func setCORSHeaders(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+}
+
+// handleLogs 处理 POST /api/v1/logs（批量写入）和 GET /api/v1/logs（搜索）
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	setCORSHeaders(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if s.logStore == nil {
+		http.Error(w, `{"error":"日志存储未初始化"}`, http.StatusServiceUnavailable)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPost:
+		// 批量写入：接受 JSON 数组格式的日志条目
+		r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
+		var entries []model.LogEntry
+		if err := json.NewDecoder(r.Body).Decode(&entries); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"%v"}`, err), http.StatusBadRequest)
+			return
+		}
+		s.logStore.WriteMany(entries)
+		w.WriteHeader(http.StatusNoContent)
+
+	case http.MethodGet:
+		// 搜索：支持 q、level、source、limit 查询参数
+		q := r.URL.Query()
+		limit, _ := strconv.Atoi(q.Get("limit"))
+		opts := logstore.SearchOptions{
+			Query:  q.Get("q"),
+			Level:  model.LogLevel(q.Get("level")),
+			Source: q.Get("source"),
+			Limit:  limit,
+		}
+		results := s.logStore.Search(opts)
+		if results == nil {
+			results = []model.LogEntry{}
+		}
+		json.NewEncoder(w).Encode(results)
+
+	default:
+		http.Error(w, `{"error":"仅支持 GET 和 POST 方法"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+// handleLogSingle 处理 POST /api/v1/logs/single — 写入单条日志记录
+func (s *Server) handleLogSingle(w http.ResponseWriter, r *http.Request) {
+	setCORSHeaders(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"仅支持 POST 方法"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	if s.logStore == nil {
+		http.Error(w, `{"error":"日志存储未初始化"}`, http.StatusServiceUnavailable)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var entry model.LogEntry
+	if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%v"}`, err), http.StatusBadRequest)
+		return
+	}
+	s.logStore.Write(entry)
 	w.WriteHeader(http.StatusNoContent)
 }

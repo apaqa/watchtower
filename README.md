@@ -9,9 +9,12 @@ WatchTower 是一个轻量级、自包含的系统监控平台，使用 Go 编�
 - **WQL 查询语言**：`GET /api/v1/query?q=avg(cpu_usage_percent[5m])` 实时查询时序数据
 - **告警引擎**：可配置规则 + 状态机（Inactive→Pending→Firing→Resolved）+ Webhook 通知
 - **告警 REST API**：CRUD 管理告警规则，查询活跃告警和历史记录
+- **日志采集**：内存环形缓冲区（每来源 10000 条）+ 24 小时自动清理，支持全文和正则搜索
+- **日志摄入 API**：`POST /api/v1/logs`（批量）/ `POST /api/v1/logs/single`（单条）/ `GET /api/v1/logs`（搜索）
+- **日志代理**：每 10 秒生成一条合成系统事件日志（可替换为真实日志文件采集）
 - **TSDB 磁盘持久化**：数据以压缩块文件（Gorilla 编码）存储于 `watchtower-data/chunks/`，重启后自动恢复
 - **内存时间序列数据库**：自动清理 1 小时前的旧数据，线程安全
-- **实时 Web 仪表板**：WebSocket 推送 + Chart.js 实时折线图 + WQL 查询界面 + 告警管理面板，深色主题
+- **实时 Web 仪表板**：WebSocket 推送 + Chart.js 实时折线图 + WQL 查询界面 + 告警管理面板 + 日志查看器，深色主题，标签式导航
 
 ## 架构图
 
@@ -48,17 +51,23 @@ watchtower/
 ├── internal/
 │   ├── agent/
 │   │   ├── agent.go             # 系统指标采集代理
+│   │   ├── log_agent.go         # 日志采集代理（合成系统事件日志）
 │   │   └── agent_test.go
 │   ├── dashboard/
 │   │   ├── dashboard.go         # Web UI + WebSocket 服务
 │   │   └── static/
-│   │       └── index.html       # 单页仪表板（含 WQL 查询界面）
+│   │       └── index.html       # 单页仪表板（指标/日志/告警三标签式导航）
 │   ├── ingest/
-│   │   ├── server.go            # HTTP 摄入端点 + WQL 查询 API
-│   │   └── server_test.go
+│   │   ├── server.go            # HTTP 摄入端点 + WQL 查询 API + 日志 API
+│   │   ├── server_test.go
+│   │   └── log_api_test.go
 │   ├── model/
-│   │   ├── metric.go            # 共享数据类型 + 指纹算法
+│   │   ├── metric.go            # 共享指标数据类型 + 指纹算法
+│   │   ├── log.go               # 日志数据类型：LogEntry、LogLevel、LogFingerprint
 │   │   └── metric_test.go
+│   ├── logstore/
+│   │   ├── store.go             # 内存环形缓冲区日志存储，支持全文/正则搜索
+│   │   └── store_test.go
 │   ├── alert/
 │   │   ├── rule.go              # AlertRule、Alert、AlertState、AlertEvent 类型定义
 │   │   ├── engine.go            # 告警引擎：评估循环、状态机、Webhook 通知
@@ -109,6 +118,7 @@ go build -o watchtower ./cmd/watchtower
 - **WQL 查询**: http://localhost:9090/api/v1/query?q=avg(cpu_usage_percent[5m])
 - **告警规则**: http://localhost:9090/api/v1/alerts/rules
 - **活跃告警**: http://localhost:9090/api/v1/alerts/active
+- **日志搜索**: http://localhost:9090/api/v1/logs?q=error&level=error&limit=50
 
 ### 手动推送自定义指标
 
@@ -242,13 +252,87 @@ Inactive ──(条件满足, duration>0)──▶ Pending ──(持续足够�
 | `GET` | `/api/v1/alerts/active` | 当前 Firing 告警列表 |
 | `GET` | `/api/v1/alerts/history` | 最近 100 条状态变化记录 |
 
+## 日志采集
+
+### 写入日志
+
+```bash
+# 批量写入（JSON 数组）
+curl -X POST http://localhost:9090/api/v1/logs \
+  -H "Content-Type: application/json" \
+  -d '[
+    {"level":"info",  "source":"myapp","message":"server started"},
+    {"level":"error", "source":"myapp","message":"database connection failed"}
+  ]'
+
+# 单条写入
+curl -X POST http://localhost:9090/api/v1/logs/single \
+  -H "Content-Type: application/json" \
+  -d '{"level":"warn","source":"myapp","message":"high memory usage detected"}'
+```
+
+### 搜索日志
+
+```bash
+# 全文搜索
+curl "http://localhost:9090/api/v1/logs?q=error&limit=50"
+
+# 级别过滤
+curl "http://localhost:9090/api/v1/logs?level=error"
+
+# 来源过滤 + 关键字
+curl "http://localhost:9090/api/v1/logs?source=myapp&q=database"
+
+# 正则搜索（以 / 包围的模式）
+curl "http://localhost:9090/api/v1/logs?q=%2Ferror+code+%5Cd%2B%2F"
+```
+
+### 日志 API 参考
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/api/v1/logs` | 批量写入日志条目（JSON 数组） |
+| `GET`  | `/api/v1/logs` | 搜索日志，支持 `q`、`level`、`source`、`limit` 参数 |
+| `POST` | `/api/v1/logs/single` | 写入单条日志条目 |
+
+### 日志查看器
+
+访问仪表板 **http://localhost:8080** 后点击 **日志** 标签：
+
+- 实时接收 WebSocket 推送的最新日志
+- 顶部搜索栏支持关键字过滤（实时生效）和 `/regex/` 正则模式
+- 级别下拉菜单快速筛选 ERROR / WARN / INFO / DEBUG
+- 彩色级别徽章：ERROR=红、WARN=黄、INFO=蓝、DEBUG=灰
+- 自动滚动到最新日志
+
+### 日志数据结构
+
+```json
+{
+  "timestamp": 1711000000000,
+  "level": "error",
+  "source": "myapp",
+  "message": "database connection failed",
+  "labels": {"host": "node1", "env": "prod"}
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `timestamp` | int64 | Unix 毫秒，可省略（服务器自动填充） |
+| `level` | string | `debug` / `info` / `warn` / `error` |
+| `source` | string | 来源标识（主机名或应用名），默认 `unknown` |
+| `message` | string | 日志消息内容 |
+| `labels` | object | 可选附加标签键值对 |
+
 ## 运行测试
 
 ```bash
-go test ./...                   # 运行全部测试
-go test ./internal/alert/...    # 仅运行告警引擎测试
-go test ./internal/wql/...      # 仅运行 WQL 测试
-go test ./internal/tsdb/...     # 仅运行 TSDB 测试（含持久化测试）
+go test ./...                     # 运行全部测试（91 个）
+go test ./internal/logstore/...  # 仅运行日志存储测试
+go test ./internal/alert/...     # 仅运行告警引擎测试
+go test ./internal/wql/...       # 仅运行 WQL 测试
+go test ./internal/tsdb/...      # 仅运行 TSDB 测试（含持久化测试）
 ```
 
 ## 技术栈

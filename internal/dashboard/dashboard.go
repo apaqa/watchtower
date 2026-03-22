@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/apaqa/watchtower/internal/alert"
+	"github.com/apaqa/watchtower/internal/logstore"
+	"github.com/apaqa/watchtower/internal/model"
 	"github.com/apaqa/watchtower/internal/tsdb"
 	"github.com/gorilla/websocket"
 )
@@ -41,6 +43,8 @@ type wsMessage struct {
 	Ts int64 `json:"ts"`
 	// Alerts 是当前非 Inactive 状态的告警摘要列表
 	Alerts []AlertInfo `json:"alerts"`
+	// Logs 是最近 20 条日志记录（按时间升序，最新在最后）
+	Logs []model.LogEntry `json:"logs"`
 }
 
 // client 代表一个 WebSocket 连接
@@ -63,6 +67,8 @@ type Server struct {
 
 	// alertEngine 是可选的告警引擎引用，用于在 WebSocket 推送中包含告警状态
 	alertEngine *alert.Engine
+	// logStore 是可选的日志存储引用，用于在 WebSocket 推送中包含最近日志
+	logStore *logstore.Store
 }
 
 // New 创建仪表板服务实例并绑定到 addr
@@ -109,6 +115,13 @@ func (s *Server) Addr() string {
 func (s *Server) SetAlertEngine(engine *alert.Engine) {
 	s.mu.Lock()
 	s.alertEngine = engine
+	s.mu.Unlock()
+}
+
+// SetLogStore 注入日志存储引用，使 WebSocket 推送中包含最近日志（必须在 Start 之前调用）
+func (s *Server) SetLogStore(ls *logstore.Store) {
+	s.mu.Lock()
+	s.logStore = ls
 	s.mu.Unlock()
 }
 
@@ -234,7 +247,23 @@ func (s *Server) broadcast() {
 		alertInfos = []AlertInfo{}
 	}
 
-	msg := wsMessage{Metrics: metrics, Ts: now, Alerts: alertInfos}
+	// 收集最近 20 条日志（升序排列：最旧在前，最新在后，便于浏览器追加显示）
+	var recentLogs []model.LogEntry
+	s.mu.RLock()
+	ls := s.logStore
+	s.mu.RUnlock()
+	if ls != nil {
+		desc := ls.Recent(20) // Search 返回降序，翻转为升序方便追加
+		recentLogs = make([]model.LogEntry, len(desc))
+		for i, e := range desc {
+			recentLogs[len(desc)-1-i] = e
+		}
+	}
+	if recentLogs == nil {
+		recentLogs = []model.LogEntry{}
+	}
+
+	msg := wsMessage{Metrics: metrics, Ts: now, Alerts: alertInfos, Logs: recentLogs}
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return
