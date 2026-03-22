@@ -108,6 +108,75 @@
     .disk   .panel-value { color: var(--yellow); }
     .custom .panel-value { color: var(--purple); }
 
+    /* ── WQL 查询面板 ── */
+    .query-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      grid-column: 1 / -1; /* 跨越全部列 */
+    }
+    .query-panel .panel-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .query-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    #wql-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: var(--text);
+      font-family: "Fira Code", "Consolas", monospace;
+      font-size: 0.9rem;
+      outline: none;
+    }
+    #wql-input:focus { border-color: var(--accent); }
+    #wql-btn {
+      background: var(--accent);
+      color: #0d1117;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 18px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: opacity 0.15s;
+    }
+    #wql-btn:hover { opacity: 0.85; }
+    #wql-result {
+      font-size: 0.88rem;
+      min-height: 40px;
+    }
+    #wql-result .result-scalar {
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    #wql-result .result-bool-true  { color: var(--green); font-weight: 600; font-size: 1.2rem; }
+    #wql-result .result-bool-false { color: var(--red);   font-weight: 600; font-size: 1.2rem; }
+    #wql-result .result-error { color: var(--red); }
+    #wql-result table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+    #wql-result th, #wql-result td {
+      text-align: left;
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+    #wql-result th { color: var(--muted); font-weight: 600; background: var(--bg); }
+
     /* ── 底部 ── */
     footer {
       text-align: center;
@@ -167,6 +236,18 @@
       <div class="panel-unit" id="unit-membytes">GB</div>
     </div>
     <div class="chart-wrap"><canvas id="chart-membytes"></canvas></div>
+  </div>
+
+  <!-- WQL 查询面板 -->
+  <div class="query-panel">
+    <div class="panel-title">WQL 查询</div>
+    <div class="query-row">
+      <input id="wql-input" type="text"
+        placeholder="avg(cpu_usage_percent[5m])"
+        value="avg(cpu_usage_percent[5m])" />
+      <button id="wql-btn">查询</button>
+    </div>
+    <div id="wql-result"><span style="color:var(--muted)">输入 WQL 表达式后点击查询</span></div>
   </div>
 </main>
 
@@ -303,6 +384,70 @@ function connect() {
 }
 
 connect();
+
+// ── WQL 查询功能 ──────────────────────────────────────────────────────────────
+const wqlInput  = document.getElementById('wql-input');
+const wqlBtn    = document.getElementById('wql-btn');
+const wqlResult = document.getElementById('wql-result');
+
+// WQL 查询接口与摄入服务共享端口 9090
+const QUERY_URL = 'http://localhost:9090/api/v1/query';
+
+async function runQuery() {
+  const q = wqlInput.value.trim();
+  if (!q) return;
+  wqlResult.innerHTML = '<span style="color:var(--muted)">查询中…</span>';
+  try {
+    const resp = await fetch(`${QUERY_URL}?q=${encodeURIComponent(q)}`);
+    const data = await resp.json();
+    if (data.error) {
+      wqlResult.innerHTML = `<span class="result-error">错误: ${escapeHtml(data.error)}</span>`;
+      return;
+    }
+    renderResult(data);
+  } catch (e) {
+    wqlResult.innerHTML = `<span class="result-error">请求失败: ${escapeHtml(String(e))}</span>`;
+  }
+}
+
+function renderResult(data) {
+  if (data.type === 'scalar' && data.scalar !== null && data.scalar !== undefined) {
+    wqlResult.innerHTML = `<div class="result-scalar">${(+data.scalar).toFixed(4)}</div>`;
+  } else if (data.type === 'bool' && data.bool !== null) {
+    const cls = data.bool ? 'result-bool-true' : 'result-bool-false';
+    wqlResult.innerHTML = `<div class="${cls}">${data.bool ? '✓ true' : '✗ false'}</div>`;
+  } else if (data.type === 'vector' && Array.isArray(data.vector)) {
+    if (data.vector.length === 0) {
+      wqlResult.innerHTML = '<span style="color:var(--muted)">结果为空</span>';
+      return;
+    }
+    // 收集所有标签键
+    const keys = [...new Set(data.vector.flatMap(s => Object.keys(s.labels || {})))].sort();
+    let html = '<table><thead><tr>';
+    keys.forEach(k => { html += `<th>${escapeHtml(k)}</th>`; });
+    html += '<th>值</th></tr></thead><tbody>';
+    data.vector.forEach(s => {
+      html += '<tr>';
+      keys.forEach(k => { html += `<td>${escapeHtml(s.labels?.[k] ?? '')}</td>`; });
+      html += `<td>${(+s.value).toFixed(4)}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    wqlResult.innerHTML = html;
+  } else {
+    wqlResult.innerHTML = `<pre style="color:var(--muted);font-size:0.8rem">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+  }
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+wqlBtn.addEventListener('click', runQuery);
+wqlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') runQuery(); });
 </script>
 </body>
 </html>

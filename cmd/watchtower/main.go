@@ -22,11 +22,15 @@ const (
 )
 
 func main() {
-	// ── 1. 初始化内存时间序列数据库 ──────────────────────────────────────────────
-	db := tsdb.New()
+	// ── 1. 初始化时间序列数据库（带磁盘持久化）────────────────────────────────────
+	db, err := tsdb.NewWithStorage("watchtower-data")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "TSDB 初始化失败: %v\n", err)
+		os.Exit(1)
+	}
 	defer db.Stop()
 
-	// ── 2. 启动摄入服务（HTTP POST /api/v1/metrics）────────────────────────────
+	// ── 2. 启动摄入服务（HTTP POST /api/v1/metrics + GET /api/v1/query）──────
 	ingestSrv, err := ingest.New(ingestAddr, db)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "摄入服务启动失败: %v\n", err)
@@ -64,6 +68,8 @@ func main() {
 	// ── 5. 打印启动信息 ──────────────────────────────────────────────────────
 	fmt.Println("WatchTower started — Dashboard: http://localhost:8080")
 	fmt.Println("摄入端点: http://localhost:9090/api/v1/metrics")
+	fmt.Println("WQL 查询: http://localhost:9090/api/v1/query?q=avg(cpu_usage_percent[5m])")
+	fmt.Println("数据目录: watchtower-data/chunks/")
 	fmt.Println("按 Ctrl+C 退出")
 
 	// ── 6. 等待终止信号，优雅关闭 ─────────────────────────────────────────────

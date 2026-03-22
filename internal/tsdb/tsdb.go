@@ -2,6 +2,7 @@
 package tsdb
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -11,12 +12,13 @@ import (
 // TSDB 是线程安全的内存时间序列数据库
 // 按指标指纹（名称 + 标签哈希）组织序列
 type TSDB struct {
-	mu     sync.RWMutex
-	series map[string]*Series // 指纹 → 序列
-	stopCh chan struct{}       // 控制清理协程退出
+	mu      sync.RWMutex
+	series  map[string]*Series // 指纹 → 序列
+	stopCh  chan struct{}       // 控制清理协程退出
+	storage *StorageManager    // 可选的持久化存储管理器（nil 表示纯内存模式）
 }
 
-// New 创建并启动一个新的 TSDB 实例，开始后台清理循环
+// New 创建并启动一个新的 TSDB 实例，开始后台清理循环（纯内存模式）
 func New() *TSDB {
 	db := &TSDB{
 		series: make(map[string]*Series),
@@ -25,6 +27,34 @@ func New() *TSDB {
 	// 启动后台清理协程，每 10 分钟删除过期数据点
 	go db.cleanupLoop()
 	return db
+}
+
+// NewWithStorage 创建带磁盘持久化的 TSDB 实例
+// 启动时从 dataDir 加载已有块数据；后台每 30 秒将新数据刷盘
+func NewWithStorage(dataDir string) (*TSDB, error) {
+	sm, err := NewStorageManager(dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("初始化存储管理器失败: %w", err)
+	}
+	db := &TSDB{
+		series:  make(map[string]*Series),
+		stopCh:  make(chan struct{}),
+		storage: sm,
+	}
+	go db.cleanupLoop()
+
+	// 从磁盘恢复历史数据
+	points, err := sm.LoadAll()
+	if err != nil {
+		return nil, fmt.Errorf("加载历史数据块失败: %w", err)
+	}
+	if len(points) > 0 {
+		db.Write(points)
+	}
+
+	// 启动后台刷盘协程
+	sm.StartFlushLoop()
+	return db, nil
 }
 
 // Write 将一批指标数据点写入数据库；若序列不存在则自动创建
@@ -53,7 +83,12 @@ func (db *TSDB) Write(points []model.MetricPoint) {
 		if ts == 0 {
 			ts = time.Now().UnixMilli()
 		}
-		s.Append(model.DataPoint{Timestamp: ts, Value: mp.Value})
+		dp := model.DataPoint{Timestamp: ts, Value: mp.Value}
+		s.Append(dp)
+		// 若持久化存储已初始化，同步写入活跃块
+		if db.storage != nil {
+			db.storage.write(fp, mp.Name, mp.Labels, dp)
+		}
 	}
 }
 
@@ -115,9 +150,12 @@ func (db *TSDB) GetSeries(name string) []*Series {
 	return result
 }
 
-// Stop 停止后台清理协程
+// Stop 停止后台清理协程，并（若启用持久化）执行最终刷盘
 func (db *TSDB) Stop() {
 	close(db.stopCh)
+	if db.storage != nil {
+		db.storage.Stop()
+	}
 }
 
 // cleanupLoop 每 10 分钟执行一次过期数据清理

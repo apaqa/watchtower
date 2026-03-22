@@ -10,6 +10,7 @@ import (
 
 	"github.com/apaqa/watchtower/internal/model"
 	"github.com/apaqa/watchtower/internal/tsdb"
+	"github.com/apaqa/watchtower/internal/wql"
 )
 
 // Server 负责接收 HTTP POST 请求并将数据写入 TSDB
@@ -26,6 +27,8 @@ func New(addr string, db *tsdb.TSDB) (*Server, error) {
 
 	// 注册 POST /api/v1/metrics 路由
 	mux.HandleFunc("/api/v1/metrics", s.handleMetrics)
+	// 注册 GET /api/v1/query 路由（WQL 查询接口）
+	mux.HandleFunc("/api/v1/query", s.handleQuery)
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -54,6 +57,33 @@ func (s *Server) Start() error {
 // Close 优雅关闭 HTTP 服务
 func (s *Server) Close() error {
 	return s.httpSrv.Close()
+}
+
+// handleQuery 处理 GET /api/v1/query?q=<WQL> 请求
+// 返回 JSON 格式的查询结果（标量、向量或布尔值）
+func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
+	// 允许跨域（浏览器仪表板与此端口不同）
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"仅支持 GET 方法"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		http.Error(w, `{"error":"缺少查询参数 q"}`, http.StatusBadRequest)
+		return
+	}
+
+	result, err := wql.EvalQuery(s.db, q)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+	json.NewEncoder(w).Encode(result)
 }
 
 // handleMetrics 处理 POST /api/v1/metrics 请求
