@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/apaqa/watchtower/internal/alert"
 	"github.com/apaqa/watchtower/internal/model"
 	"github.com/apaqa/watchtower/internal/tsdb"
 	"github.com/apaqa/watchtower/internal/wql"
@@ -16,6 +17,7 @@ import (
 // Server 负责接收 HTTP POST 请求并将数据写入 TSDB
 type Server struct {
 	db       *tsdb.TSDB
+	mux      *http.ServeMux // 保留对路由器的引用，以便后续注册告警路由
 	httpSrv  *http.Server
 	listener net.Listener
 }
@@ -23,7 +25,7 @@ type Server struct {
 // New 创建摄入服务实例，绑定到指定地址
 func New(addr string, db *tsdb.TSDB) (*Server, error) {
 	mux := http.NewServeMux()
-	s := &Server{db: db}
+	s := &Server{db: db, mux: mux}
 
 	// 注册 POST /api/v1/metrics 路由
 	mux.HandleFunc("/api/v1/metrics", s.handleMetrics)
@@ -47,6 +49,12 @@ func New(addr string, db *tsdb.TSDB) (*Server, error) {
 // Addr 返回实际监听地址（用于测试时获取随机端口）
 func (s *Server) Addr() string {
 	return s.listener.Addr().String()
+}
+
+// RegisterAlertEngine 将告警 API 路由注册到现有 ServeMux（必须在 Start 之前调用）
+// 设计为独立方法，避免修改 New() 签名影响现有测试
+func (s *Server) RegisterAlertEngine(engine *alert.Engine) {
+	alert.RegisterRoutes(s.mux, engine)
 }
 
 // Start 启动 HTTP 服务（阻塞，应在 goroutine 中调用）

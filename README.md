@@ -7,9 +7,11 @@ WatchTower 是一个轻量级、自包含的系统监控平台，使用 Go 编�
 - **系统代理**：每 5 秒采集 CPU、内存、磁盘使用率并推送到本地摄入服务
 - **HTTP 摄入 API**：`POST /api/v1/metrics` 接收 JSON 格式指标数据
 - **WQL 查询语言**：`GET /api/v1/query?q=avg(cpu_usage_percent[5m])` 实时查询时序数据
+- **告警引擎**：可配置规则 + 状态机（Inactive→Pending→Firing→Resolved）+ Webhook 通知
+- **告警 REST API**：CRUD 管理告警规则，查询活跃告警和历史记录
 - **TSDB 磁盘持久化**：数据以压缩块文件（Gorilla 编码）存储于 `watchtower-data/chunks/`，重启后自动恢复
 - **内存时间序列数据库**：自动清理 1 小时前的旧数据，线程安全
-- **实时 Web 仪表板**：WebSocket 推送 + Chart.js 实时折线图 + WQL 查询界面，深色主题
+- **实时 Web 仪表板**：WebSocket 推送 + Chart.js 实时折线图 + WQL 查询界面 + 告警管理面板，深色主题
 
 ## 架构图
 
@@ -57,6 +59,13 @@ watchtower/
 │   ├── model/
 │   │   ├── metric.go            # 共享数据类型 + 指纹算法
 │   │   └── metric_test.go
+│   ├── alert/
+│   │   ├── rule.go              # AlertRule、Alert、AlertState、AlertEvent 类型定义
+│   │   ├── engine.go            # 告警引擎：评估循环、状态机、Webhook 通知
+│   │   ├── api.go               # 告警 HTTP API 路由注册与处理器
+│   │   ├── rule_test.go
+│   │   ├── engine_test.go
+│   │   └── api_test.go
 │   ├── tsdb/
 │   │   ├── tsdb.go              # 时序数据库主体
 │   │   ├── series.go            # 单条时间序列
@@ -98,6 +107,8 @@ go build -o watchtower ./cmd/watchtower
 - **仪表板**: http://localhost:8080
 - **摄入 API**: http://localhost:9090/api/v1/metrics
 - **WQL 查询**: http://localhost:9090/api/v1/query?q=avg(cpu_usage_percent[5m])
+- **告警规则**: http://localhost:9090/api/v1/alerts/rules
+- **活跃告警**: http://localhost:9090/api/v1/alerts/active
 
 ### 手动推送自定义指标
 
@@ -175,12 +186,69 @@ WatchTower 使用 **Gorilla 论文**中的两种无损压缩算法将数据持�
 - 后台每 **30 秒**自动刷盘，进程退出时执行最终刷盘
 - 启动时自动从磁盘**恢复所有历史数据**
 
+## 告警引擎
+
+### 创建告警规则
+
+```bash
+curl -X POST http://localhost:9090/api/v1/alerts/rules \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "high_cpu",
+    "wql_expression": "avg(cpu_usage_percent[5m])",
+    "operator": ">",
+    "threshold": 80,
+    "duration": "5m",
+    "severity": "critical",
+    "webhook_url": "https://hooks.example.com/notify"
+  }'
+```
+
+### 告警状态机
+
+```
+Inactive ──(条件满足, duration=0)──▶ Firing ──(条件消除)──▶ Resolved ──▶ Inactive
+Inactive ──(条件满足, duration>0)──▶ Pending ──(持续足够长)──▶ Firing
+                                   └──(条件消除)──▶ Inactive
+```
+
+| 状态 | 含义 |
+|------|------|
+| `inactive` | 条件为假，告警未激活 |
+| `pending` | 条件为真，等待 duration 时长到达 |
+| `firing` | 告警已触发，发送 Firing Webhook |
+| `resolved` | 条件恢复为假，发送 Resolved Webhook |
+
+### Webhook 通知载荷
+
+```json
+{
+  "alert_name": "high_cpu",
+  "severity": "critical",
+  "value": 95.23,
+  "message": "avg(cpu_usage_percent[5m]) 当前值 95.2300（阈值：> 80.0000）",
+  "state": "firing",
+  "fired_at": "2026-03-22T10:00:00Z"
+}
+```
+
+### 告警 API 参考
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/api/v1/alerts/rules` | 创建告警规则 |
+| `GET` | `/api/v1/alerts/rules` | 列出所有规则及状态 |
+| `DELETE` | `/api/v1/alerts/rules/{name}` | 删除指定规则 |
+| `GET` | `/api/v1/alerts/active` | 当前 Firing 告警列表 |
+| `GET` | `/api/v1/alerts/history` | 最近 100 条状态变化记录 |
+
 ## 运行测试
 
 ```bash
-go test ./...        # 运行全部测试
-go test ./internal/wql/...   # 仅运行 WQL 测试
-go test ./internal/tsdb/...  # 仅运行 TSDB 测试（含持久化测试）
+go test ./...                   # 运行全部测试
+go test ./internal/alert/...    # 仅运行告警引擎测试
+go test ./internal/wql/...      # 仅运行 WQL 测试
+go test ./internal/tsdb/...     # 仅运行 TSDB 测试（含持久化测试）
 ```
 
 ## 技术栈
@@ -192,6 +260,7 @@ go test ./internal/tsdb/...  # 仅运行 TSDB 测试（含持久化测试）
 | WebSocket | [gorilla/websocket](https://github.com/gorilla/websocket) |
 | 前端图表 | [Chart.js 4](https://www.chartjs.org/) |
 | 查询语言 | WQL（自研，受 PromQL 启发） |
+| 告警引擎 | 自研状态机，支持 Webhook 通知 |
 | 存储 | 内存 TSDB + Gorilla 压缩块文件（无外部依赖） |
 
 ## API 参考

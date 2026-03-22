@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apaqa/watchtower/internal/alert"
 	"github.com/apaqa/watchtower/internal/tsdb"
 	"github.com/gorilla/websocket"
 )
@@ -23,12 +24,23 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true }, // 开发模式允许所有来源
 }
 
+// AlertInfo 是 WebSocket 消息中内嵌的轻量告警摘要
+type AlertInfo struct {
+	Name     string `json:"name"`
+	State    string `json:"state"`
+	Severity string `json:"severity"`
+	Value    float64 `json:"value"`
+	Message  string `json:"message"`
+}
+
 // wsMessage 是通过 WebSocket 推送给浏览器的消息结构
 type wsMessage struct {
 	// Metrics 存储指标名称 → 最新值的映射
 	Metrics map[string]float64 `json:"metrics"`
 	// Ts 是服务器推送时间（Unix 毫秒）
 	Ts int64 `json:"ts"`
+	// Alerts 是当前非 Inactive 状态的告警摘要列表
+	Alerts []AlertInfo `json:"alerts"`
 }
 
 // client 代表一个 WebSocket 连接
@@ -48,6 +60,9 @@ type Server struct {
 	clients map[*client]struct{}
 
 	stopCh chan struct{}
+
+	// alertEngine 是可选的告警引擎引用，用于在 WebSocket 推送中包含告警状态
+	alertEngine *alert.Engine
 }
 
 // New 创建仪表板服务实例并绑定到 addr
@@ -88,6 +103,13 @@ func New(addr string, db *tsdb.TSDB) (*Server, error) {
 // Addr 返回实际监听地址
 func (s *Server) Addr() string {
 	return s.listener.Addr().String()
+}
+
+// SetAlertEngine 注入告警引擎引用，使 WebSocket 推送中包含告警状态（必须在 Start 之前调用）
+func (s *Server) SetAlertEngine(engine *alert.Engine) {
+	s.mu.Lock()
+	s.alertEngine = engine
+	s.mu.Unlock()
 }
 
 // Start 启动 HTTP 服务和推送循环（应在 goroutine 中调用）
@@ -190,7 +212,29 @@ func (s *Server) broadcast() {
 		return // 尚无数据，不推送空消息
 	}
 
-	msg := wsMessage{Metrics: metrics, Ts: now}
+	// 收集非 Inactive 状态的告警摘要
+	var alertInfos []AlertInfo
+	s.mu.RLock()
+	engine := s.alertEngine
+	s.mu.RUnlock()
+	if engine != nil {
+		for _, a := range engine.GetAlerts() {
+			if a.State != alert.StateInactive {
+				alertInfos = append(alertInfos, AlertInfo{
+					Name:     a.Rule.Name,
+					State:    string(a.State),
+					Severity: a.Rule.Severity,
+					Value:    a.LastValue,
+					Message:  a.Message,
+				})
+			}
+		}
+	}
+	if alertInfos == nil {
+		alertInfos = []AlertInfo{}
+	}
+
+	msg := wsMessage{Metrics: metrics, Ts: now, Alerts: alertInfos}
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return

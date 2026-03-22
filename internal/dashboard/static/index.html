@@ -108,6 +108,139 @@
     .disk   .panel-value { color: var(--yellow); }
     .custom .panel-value { color: var(--purple); }
 
+    /* ── 告警面板 ── */
+    .alert-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      grid-column: 1 / -1;
+    }
+    .alert-panel .panel-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .alert-toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    #create-alert-btn {
+      background: var(--green);
+      color: #0d1117;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: opacity 0.15s;
+    }
+    #create-alert-btn:hover { opacity: 0.85; }
+    /* 告警徽章 */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .badge-critical { background: rgba(248,81,73,0.2);  color: var(--red);    border: 1px solid rgba(248,81,73,0.4); }
+    .badge-warning  { background: rgba(210,153,34,0.2); color: var(--yellow); border: 1px solid rgba(210,153,34,0.4); }
+    .badge-info     { background: rgba(88,166,255,0.2); color: var(--accent); border: 1px solid rgba(88,166,255,0.4); }
+    .badge-pending  { background: rgba(139,148,158,0.2);color: var(--muted);  border: 1px solid rgba(139,148,158,0.4); }
+    .badge-resolved { background: rgba(63,185,80,0.2);  color: var(--green);  border: 1px solid rgba(63,185,80,0.4); }
+
+    #active-alerts-list { margin-bottom: 16px; min-height: 32px; }
+    #active-alerts-list .no-alerts { color: var(--muted); font-size: 0.85rem; }
+
+    /* 告警历史时间线 */
+    .history-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    #alert-history-list {
+      max-height: 180px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .history-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.82rem;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .history-item:last-child { border-bottom: none; }
+    .history-time { color: var(--muted); white-space: nowrap; min-width: 80px; }
+    .history-name { font-weight: 600; }
+    .history-msg  { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* 创建告警模态框 */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      width: min(500px, 95vw);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .modal h2 { font-size: 1.1rem; font-weight: 700; }
+    .form-row { display: flex; flex-direction: column; gap: 4px; }
+    .form-row label { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+    .form-row input, .form-row select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      color: var(--text);
+      font-size: 0.9rem;
+      outline: none;
+    }
+    .form-row input:focus, .form-row select:focus { border-color: var(--accent); }
+    .form-row-inline { display: flex; gap: 8px; }
+    .form-row-inline .form-row { flex: 1; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+    .btn-primary {
+      background: var(--accent); color: #0d1117; border: none;
+      border-radius: 6px; padding: 8px 18px; font-weight: 600; cursor: pointer;
+    }
+    .btn-secondary {
+      background: transparent; color: var(--muted); border: 1px solid var(--border);
+      border-radius: 6px; padding: 8px 18px; font-weight: 600; cursor: pointer;
+    }
+    #modal-error { color: var(--red); font-size: 0.82rem; display: none; }
+
     /* ── WQL 查询面板 ── */
     .query-panel {
       background: var(--surface);
@@ -238,6 +371,77 @@
     <div class="chart-wrap"><canvas id="chart-membytes"></canvas></div>
   </div>
 
+  <!-- 告警面板 -->
+  <div class="alert-panel">
+    <div class="panel-title">
+      告警管理
+      <span id="active-count" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 8px;font-size:0.72rem"></span>
+    </div>
+    <div class="alert-toolbar">
+      <button id="create-alert-btn">+ 创建告警规则</button>
+    </div>
+    <!-- 活跃告警 -->
+    <div id="active-alerts-list"><span class="no-alerts">暂无活跃告警</span></div>
+    <!-- 历史记录 -->
+    <div class="history-title">最近状态变化</div>
+    <div id="alert-history-list"></div>
+  </div>
+
+  <!-- 创建告警规则模态框 -->
+  <div class="modal-overlay" id="alert-modal">
+    <div class="modal">
+      <h2>创建告警规则</h2>
+      <div class="form-row">
+        <label>规则名称</label>
+        <input id="f-name" type="text" placeholder="high_cpu" />
+      </div>
+      <div class="form-row">
+        <label>WQL 表达式</label>
+        <input id="f-expr" type="text" placeholder="avg(cpu_usage_percent[5m])" />
+      </div>
+      <div class="form-row-inline">
+        <div class="form-row">
+          <label>运算符</label>
+          <select id="f-op">
+            <option value=">">大于 (&gt;)</option>
+            <option value=">=">大于等于 (&gt;=)</option>
+            <option value="<">小于 (&lt;)</option>
+            <option value="<=">小于等于 (&lt;=)</option>
+            <option value="==">等于 (==)</option>
+            <option value="!=">不等于 (!=)</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>阈值</label>
+          <input id="f-threshold" type="number" placeholder="80" step="any" />
+        </div>
+      </div>
+      <div class="form-row-inline">
+        <div class="form-row">
+          <label>持续时长（如 5m、1h，0 表示立即）</label>
+          <input id="f-duration" type="text" placeholder="0" value="0" />
+        </div>
+        <div class="form-row">
+          <label>严重级别</label>
+          <select id="f-severity">
+            <option value="critical">critical</option>
+            <option value="warning">warning</option>
+            <option value="info">info</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Webhook URL（可选）</label>
+        <input id="f-webhook" type="url" placeholder="https://hooks.example.com/..." />
+      </div>
+      <div id="modal-error"></div>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="modal-cancel">取消</button>
+        <button class="btn-primary" id="modal-submit">创建</button>
+      </div>
+    </div>
+  </div>
+
   <!-- WQL 查询面板 -->
   <div class="query-panel">
     <div class="panel-title">WQL 查询</div>
@@ -325,8 +529,13 @@ function bytesToGB(bytes) { return (bytes / 1073741824).toFixed(2); }
 function handleMessage(data) {
   const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
 
-  // data 格式: { metrics: { cpu_usage_percent: number, memory_usage_percent: number, ... } }
+  // data 格式: { metrics: {...}, ts: ..., alerts: [...] }
   const m = data.metrics || {};
+
+  // 更新告警面板
+  if (Array.isArray(data.alerts)) {
+    renderAlerts(data.alerts);
+  }
 
   if (m.cpu_usage_percent !== undefined) {
     const v = +m.cpu_usage_percent.toFixed(1);
@@ -384,6 +593,110 @@ function connect() {
 }
 
 connect();
+
+// ── 告警面板 ─────────────────────────────────────────────────────────────────
+const ALERTS_API = 'http://localhost:9090/api/v1/alerts';
+
+// renderAlerts 根据 WebSocket 推送的告警数据刷新告警面板
+function renderAlerts(alerts) {
+  const list = document.getElementById('active-alerts-list');
+  const countBadge = document.getElementById('active-count');
+  const firing = (alerts || []).filter(a => a.state === 'firing' || a.state === 'pending');
+
+  if (firing.length === 0) {
+    list.innerHTML = '<span class="no-alerts">暂无活跃告警</span>';
+    countBadge.style.display = 'none';
+  } else {
+    countBadge.textContent = firing.length;
+    countBadge.style.display = 'inline';
+    list.innerHTML = firing.map(a => {
+      const cls = a.state === 'pending' ? 'badge-pending' : `badge-${a.severity}`;
+      return `<span class="badge ${cls}" style="margin:0 4px 4px 0">
+        ${escapeHtml(a.name)} — ${escapeHtml(a.severity.toUpperCase())} — ${(+a.value).toFixed(2)}
+      </span>`;
+    }).join('');
+  }
+}
+
+// fetchAlertHistory 拉取历史记录并渲染
+async function fetchAlertHistory() {
+  try {
+    const resp = await fetch(`${ALERTS_API}/history`);
+    const history = await resp.json();
+    const container = document.getElementById('alert-history-list');
+    if (!Array.isArray(history) || history.length === 0) {
+      container.innerHTML = '<div style="color:var(--muted);font-size:0.82rem">暂无历史记录</div>';
+      return;
+    }
+    container.innerHTML = history.slice(0, 20).map(ev => {
+      const cls = ev.state === 'firing' ? 'badge-critical'
+               : ev.state === 'resolved' ? 'badge-resolved'
+               : ev.state === 'pending'  ? 'badge-pending'
+               : '';
+      const t = new Date(ev.timestamp).toLocaleTimeString('zh-CN', {hour12:false});
+      return `<div class="history-item">
+        <span class="history-time">${t}</span>
+        <span class="badge ${cls}" style="font-size:0.72rem;padding:2px 7px">${escapeHtml(ev.state)}</span>
+        <span class="history-name">${escapeHtml(ev.rule_name)}</span>
+        <span class="history-msg">${escapeHtml(ev.message||'')}</span>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    // 忽略网络错误（告警服务可能尚未启动）
+  }
+}
+
+// 创建告警模态框逻辑
+document.getElementById('create-alert-btn').addEventListener('click', () => {
+  document.getElementById('alert-modal').classList.add('open');
+  document.getElementById('modal-error').style.display = 'none';
+});
+document.getElementById('modal-cancel').addEventListener('click', () => {
+  document.getElementById('alert-modal').classList.remove('open');
+});
+document.getElementById('alert-modal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('alert-modal'))
+    document.getElementById('alert-modal').classList.remove('open');
+});
+
+document.getElementById('modal-submit').addEventListener('click', async () => {
+  const errEl = document.getElementById('modal-error');
+  errEl.style.display = 'none';
+
+  const rule = {
+    name:           document.getElementById('f-name').value.trim(),
+    wql_expression: document.getElementById('f-expr').value.trim(),
+    operator:       document.getElementById('f-op').value,
+    threshold:      parseFloat(document.getElementById('f-threshold').value),
+    duration:       document.getElementById('f-duration').value.trim() || '0',
+    severity:       document.getElementById('f-severity').value,
+    webhook_url:    document.getElementById('f-webhook').value.trim(),
+  };
+
+  try {
+    const resp = await fetch(`${ALERTS_API}/rules`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(rule),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      errEl.textContent = data.error || '创建失败';
+      errEl.style.display = 'block';
+      return;
+    }
+    document.getElementById('alert-modal').classList.remove('open');
+    fetchAlertHistory();
+  } catch(e) {
+    errEl.textContent = '网络错误: ' + String(e);
+    errEl.style.display = 'block';
+  }
+});
+
+// 启动时拉取历史记录
+fetchAlertHistory();
+// 每 15 秒刷新一次历史记录
+setInterval(fetchAlertHistory, 15000);
 
 // ── WQL 查询功能 ──────────────────────────────────────────────────────────────
 const wqlInput  = document.getElementById('wql-input');
