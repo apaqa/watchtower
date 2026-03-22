@@ -1,0 +1,46 @@
+# WatchTower 配置文件
+# 将此文件放置于项目根目录。所有字段均有默认值，可按需修改。
+
+server:
+  ingest_port: 9090       # 摄入 API 与探针 API 的监听端口
+  dashboard_port: 8080    # 仪表板 Web UI 的监听端口
+
+agent:
+  enabled: true           # 是否启用系统指标采集代理
+  interval_seconds: 5     # 指标采集间隔（秒）
+
+retention:
+  metrics_hours: 1        # 时序数据在内存中的保留时长（小时）
+  logs_hours: 24          # 日志数据在内存中的保留时长（小时）
+
+# HTTP 端点探针列表：WatchTower 会按照 interval_seconds 周期性探测这些端点
+endpoints:
+  - name: watchtower-self
+    url: http://localhost:9090/api/v1/metrics
+    method: GET
+    expected_status: 405    # GET /metrics 只允许 POST，返回 405 表示服务正常
+    interval_seconds: 30
+    timeout_ms: 5000
+
+  - name: google-dns
+    url: https://dns.google
+    method: GET
+    expected_status: 200
+    interval_seconds: 60
+    timeout_ms: 10000
+
+# 预定义告警规则（启动时自动加载，等同于通过 API 创建）
+alerts:
+  - name: high_cpu
+    wql_expression: avg(cpu_usage_percent[5m])
+    operator: ">"
+    threshold: 85
+    duration: 5m
+    severity: warning
+
+  - name: high_memory
+    wql_expression: avg(memory_usage_percent[5m])
+    operator: ">"
+    threshold: 90
+    duration: 5m
+    severity: critical

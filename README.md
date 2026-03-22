@@ -12,9 +12,12 @@ WatchTower 是一个轻量级、自包含的系统监控平台，使用 Go 编�
 - **日志采集**：内存环形缓冲区（每来源 10000 条）+ 24 小时自动清理，支持全文和正则搜索
 - **日志摄入 API**：`POST /api/v1/logs`（批量）/ `POST /api/v1/logs/single`（单条）/ `GET /api/v1/logs`（搜索）
 - **日志代理**：每 10 秒生成一条合成系统事件日志（可替换为真实日志文件采集）
+- **HTTP 端点探针**：按配置间隔探测任意 HTTP(S) 端点，记录响应时间和可用率，支持运行时动态增删
+- **端点探针 API**：CRUD 管理探针，查询历史记录；`probe_status`、`probe_response_ms` 指标写入 TSDB
+- **YAML 配置文件**：`watchtower.yaml` 定义服务端口、代理间隔、端点探针、预置告警规则，全部字段有默认值
 - **TSDB 磁盘持久化**：数据以压缩块文件（Gorilla 编码）存储于 `watchtower-data/chunks/`，重启后自动恢复
 - **内存时间序列数据库**：自动清理 1 小时前的旧数据，线程安全
-- **实时 Web 仪表板**：WebSocket 推送 + Chart.js 实时折线图 + WQL 查询界面 + 告警管理面板 + 日志查看器，深色主题，标签式导航
+- **实时 Web 仪表板**：WebSocket 推送 + Chart.js 实时折线图 + WQL 查询界面 + 告警管理面板 + 日志查看器 + 端点监控面板，深色主题，标签式导航
 
 ## 架构图
 
@@ -56,9 +59,12 @@ watchtower/
 │   ├── dashboard/
 │   │   ├── dashboard.go         # Web UI + WebSocket 服务
 │   │   └── static/
-│   │       └── index.html       # 单页仪表板（指标/日志/告警三标签式导航）
+│   │       └── index.html       # 单页仪表板（指标/日志/告警/端点监控四标签式导航）
+│   ├── config/
+│   │   ├── config.go            # YAML 配置加载，Default()/Load() + applyDefaults()
+│   │   └── config_test.go
 │   ├── ingest/
-│   │   ├── server.go            # HTTP 摄入端点 + WQL 查询 API + 日志 API
+│   │   ├── server.go            # HTTP 摄入端点 + WQL 查询 API + 日志 API + 探针 API 注册
 │   │   ├── server_test.go
 │   │   └── log_api_test.go
 │   ├── model/
@@ -68,6 +74,10 @@ watchtower/
 │   ├── logstore/
 │   │   ├── store.go             # 内存环形缓冲区日志存储，支持全文/正则搜索
 │   │   └── store_test.go
+│   ├── probe/
+│   │   ├── probe.go             # HTTP 端点探针：ProbeManager、ProbeConfig、ProbeResult
+│   │   ├── api.go               # 探针 HTTP API 路由注册与处理器
+│   │   └── probe_test.go
 │   ├── alert/
 │   │   ├── rule.go              # AlertRule、Alert、AlertState、AlertEvent 类型定义
 │   │   ├── engine.go            # 告警引擎：评估循环、状态机、Webhook 通知
@@ -119,6 +129,9 @@ go build -o watchtower ./cmd/watchtower
 - **告警规则**: http://localhost:9090/api/v1/alerts/rules
 - **活跃告警**: http://localhost:9090/api/v1/alerts/active
 - **日志搜索**: http://localhost:9090/api/v1/logs?q=error&level=error&limit=50
+- **端点探针**: http://localhost:9090/api/v1/probes
+
+端口和行为可通过项目根目录的 `watchtower.yaml` 配置文件调整（详见[配置文件](#配置文件)）。
 
 ### 手动推送自定义指标
 
@@ -325,10 +338,113 @@ curl "http://localhost:9090/api/v1/logs?q=%2Ferror+code+%5Cd%2B%2F"
 | `message` | string | 日志消息内容 |
 | `labels` | object | 可选附加标签键值对 |
 
+## 配置文件
+
+项目根目录提供 `watchtower.yaml` 示例配置，所有字段均有默认值，文件不存在时自动使用默认值。
+
+```yaml
+server:
+  ingest_port: 9090       # 摄入 API 与探针 API 的监听端口
+  dashboard_port: 8080    # 仪表板 Web UI 的监听端口
+
+agent:
+  enabled: true           # 是否启用系统指标采集代理
+  interval_seconds: 5     # 指标采集间隔（秒）
+
+retention:
+  metrics_hours: 1        # 时序数据在内存中的保留时长（小时）
+  logs_hours: 24          # 日志数据在内存中的保留时长（小时）
+
+# HTTP 端点探针列表
+endpoints:
+  - name: my-api
+    url: https://api.example.com/health
+    method: GET
+    expected_status: 200
+    interval_seconds: 30
+    timeout_ms: 5000
+    headers:
+      Authorization: "Bearer token"
+
+# 预置告警规则（等同于通过 API 创建）
+alerts:
+  - name: high_cpu
+    wql_expression: avg(cpu_usage_percent[5m])
+    operator: ">"
+    threshold: 85
+    duration: 5m
+    severity: warning
+```
+
+## HTTP 端点监控
+
+### 探针 API 参考
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/v1/probes` | 列出所有探针及当前状态 |
+| `POST` | `/api/v1/probes` | 动态添加新探针 |
+| `DELETE` | `/api/v1/probes/{name}` | 删除指定探针 |
+| `GET` | `/api/v1/probes/{name}/history` | 查询最近 100 次探测历史 |
+
+### 动态管理探针
+
+```bash
+# 添加探针
+curl -X POST http://localhost:9090/api/v1/probes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-api",
+    "url": "https://api.example.com/health",
+    "method": "GET",
+    "expected_status": 200,
+    "interval_seconds": 30,
+    "timeout_ms": 5000
+  }'
+
+# 查看所有探针状态
+curl http://localhost:9090/api/v1/probes
+
+# 查看探测历史
+curl http://localhost:9090/api/v1/probes/my-api/history
+
+# 删除探针
+curl -X DELETE http://localhost:9090/api/v1/probes/my-api
+```
+
+### 探针状态字段
+
+```json
+{
+  "name": "my-api",
+  "url": "https://api.example.com/health",
+  "status": "up",
+  "response_ms": 142,
+  "status_code": 200,
+  "uptime_pct": 99.5,
+  "last_check": 1711000000000,
+  "recent_history": [
+    {"timestamp": 1711000000000, "status": "up", "status_code": 200, "response_ms": 142}
+  ]
+}
+```
+
+### 端点监控仪表板
+
+访问 http://localhost:8080 后点击**端点监控**标签：
+
+- 每张探针卡片显示状态徽章（UP/DOWN）、最新响应时间、可用率
+- 底部状态点序列（绿=up，红=down）展示最近 20 次探测结果
+- Chart.js 迷你折线图（Sparkline）显示响应时间趋势
+- **Add Probe** 按钮支持在界面内动态添加新探针
+- 每 30 秒自动刷新
+
 ## 运行测试
 
 ```bash
-go test ./...                     # 运行全部测试（91 个）
+go test ./...                     # 运行全部测试（112+ 个）
+go test ./internal/config/...    # 仅运行配置加载测试
+go test ./internal/probe/...     # 仅运行端点探针测试
 go test ./internal/logstore/...  # 仅运行日志存储测试
 go test ./internal/alert/...     # 仅运行告警引擎测试
 go test ./internal/wql/...       # 仅运行 WQL 测试
@@ -345,6 +461,8 @@ go test ./internal/tsdb/...      # 仅运行 TSDB 测试（含持久化测试）
 | 前端图表 | [Chart.js 4](https://www.chartjs.org/) |
 | 查询语言 | WQL（自研，受 PromQL 启发） |
 | 告警引擎 | 自研状态机，支持 Webhook 通知 |
+| 端点探针 | 自研 HTTP 探针引擎，per-probe goroutine |
+| 配置 | [gopkg.in/yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3) |
 | 存储 | 内存 TSDB + Gorilla 压缩块文件（无外部依赖） |
 
 ## API 参考

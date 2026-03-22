@@ -12,6 +12,7 @@ import (
 	"github.com/apaqa/watchtower/internal/alert"
 	"github.com/apaqa/watchtower/internal/logstore"
 	"github.com/apaqa/watchtower/internal/model"
+	"github.com/apaqa/watchtower/internal/probe"
 	"github.com/apaqa/watchtower/internal/tsdb"
 	"github.com/apaqa/watchtower/internal/wql"
 )
@@ -58,6 +59,11 @@ func (s *Server) Addr() string {
 // 设计为独立方法，避免修改 New() 签名影响现有测试
 func (s *Server) RegisterAlertEngine(engine *alert.Engine) {
 	alert.RegisterRoutes(s.mux, engine)
+}
+
+// RegisterProbeManager 注入探针管理器并注册探针 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterProbeManager(pm *probe.Manager) {
+	probe.RegisterRoutes(s.mux, pm)
 }
 
 // RegisterLogStore 注入日志存储并注册日志 API 路由（必须在 Start 之前调用）

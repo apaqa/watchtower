@@ -472,6 +472,118 @@
       font-size: 0.88rem;
     }
 
+    /* ── 端点监控面板 ── */
+    #tab-uptime { padding: 24px; }
+    .probe-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .probe-panel-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .probe-toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+    #add-probe-btn {
+      background: var(--accent);
+      color: #0d1117;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: opacity 0.15s;
+    }
+    #add-probe-btn:hover { opacity: 0.85; }
+    #probe-refresh-btn {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: color 0.15s;
+    }
+    #probe-refresh-btn:hover { color: var(--text); }
+
+    /* 探针卡片 */
+    .probe-list { display: flex; flex-direction: column; gap: 12px; }
+    .probe-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .probe-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      gap: 12px;
+    }
+    .probe-info-col { flex: 1; min-width: 0; }
+    .probe-name { font-weight: 700; font-size: 0.95rem; }
+    .probe-url { font-size: 0.78rem; color: var(--muted); margin-top: 2px; word-break: break-all; }
+    .probe-metrics-col {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .probe-status-badge {
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+    }
+    .probe-up      { background: rgba(63,185,80,0.2);  color: var(--green); border: 1px solid rgba(63,185,80,0.4); }
+    .probe-down    { background: rgba(248,81,73,0.2);  color: var(--red);   border: 1px solid rgba(248,81,73,0.4); }
+    .probe-unknown { background: rgba(139,148,158,0.15);color: var(--muted); border: 1px solid rgba(139,148,158,0.3); }
+    .probe-rt       { font-size: 0.84rem; color: var(--text); font-variant-numeric: tabular-nums; }
+    .probe-uptime-val { font-size: 0.84rem; color: var(--green); font-variant-numeric: tabular-nums; }
+
+    /* 状态历史圆点 */
+    .probe-dots {
+      display: flex;
+      gap: 3px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+    .probe-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      cursor: default;
+      flex-shrink: 0;
+    }
+    .dot-up   { background: var(--green); }
+    .dot-down { background: var(--red); }
+
+    /* 响应时间火花图 */
+    .probe-sparkline-wrap {
+      height: 48px;
+      position: relative;
+    }
+
+    /* 添加探针模态框 */
+    #probe-modal .modal { width: min(480px, 95vw); }
+
     /* ── 底部 ── */
     footer {
       text-align: center;
@@ -497,6 +609,7 @@
   <button class="tab-btn active" data-tab="metrics">指标</button>
   <button class="tab-btn" data-tab="logs">日志</button>
   <button class="tab-btn" data-tab="alerts">告警</button>
+  <button class="tab-btn" data-tab="uptime">端点监控</button>
 </nav>
 
 <!-- ── 指标标签 ─────────────────────────────────────────────────────────── -->
@@ -618,6 +731,69 @@
   </div>
 
 </div><!-- /#tab-alerts -->
+
+<!-- ── 端点监控标签 ──────────────────────────────────────────────────────── -->
+<div id="tab-uptime" class="tab-panel">
+
+  <div class="probe-panel">
+    <div class="probe-panel-title">
+      端点监控
+      <span id="probe-summary" style="font-size:0.8rem;font-weight:400;color:var(--muted)"></span>
+    </div>
+    <div class="probe-toolbar">
+      <button id="add-probe-btn">+ 添加探针</button>
+      <button id="probe-refresh-btn">↻ 刷新</button>
+    </div>
+    <div class="probe-list" id="probe-list">
+      <div style="color:var(--muted);font-size:0.88rem;padding:20px 0" id="probe-empty">暂无端点配置</div>
+    </div>
+  </div>
+
+</div><!-- /#tab-uptime -->
+
+<!-- 添加探针模态框 -->
+<div class="modal-overlay" id="probe-modal">
+  <div class="modal">
+    <h2>添加端点探针</h2>
+    <div class="form-row">
+      <label>探针名称</label>
+      <input id="pf-name" type="text" placeholder="my-api" />
+    </div>
+    <div class="form-row">
+      <label>目标 URL</label>
+      <input id="pf-url" type="url" placeholder="https://api.example.com/health" />
+    </div>
+    <div class="form-row-inline">
+      <div class="form-row">
+        <label>HTTP 方法</label>
+        <select id="pf-method">
+          <option value="GET">GET</option>
+          <option value="POST">POST</option>
+          <option value="HEAD">HEAD</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>期望状态码</label>
+        <input id="pf-status" type="number" value="200" min="100" max="599" />
+      </div>
+    </div>
+    <div class="form-row-inline">
+      <div class="form-row">
+        <label>探测间隔（秒）</label>
+        <input id="pf-interval" type="number" value="30" min="5" />
+      </div>
+      <div class="form-row">
+        <label>超时（毫秒）</label>
+        <input id="pf-timeout" type="number" value="10000" min="100" />
+      </div>
+    </div>
+    <div id="probe-modal-error" style="color:var(--red);font-size:0.82rem;display:none"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="probe-modal-cancel">取消</button>
+      <button class="btn-primary" id="probe-modal-submit">添加</button>
+    </div>
+  </div>
+</div>
 
 <!-- 创建告警规则模态框（全局，不受标签影响） -->
 <div class="modal-overlay" id="alert-modal">
@@ -1073,6 +1249,237 @@ function renderResult(data) {
 
 wqlBtn.addEventListener('click', runQuery);
 wqlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') runQuery(); });
+
+// ── 端点监控逻辑 ──────────────────────────────────────────────────────────────
+const PROBES_API = 'http://localhost:9090/api/v1/probes';
+
+// sparklineCharts 保存每个探针的 Chart.js 实例（防止重复创建）
+const sparklineCharts = {};
+
+// fetchProbes 拉取探针列表并渲染卡片
+async function fetchProbes() {
+  try {
+    const resp = await fetch(PROBES_API);
+    if (!resp.ok) return;
+    const probes = await resp.json();
+    renderProbeList(probes || []);
+  } catch(e) {
+    // 探针 API 可能暂未初始化，静默忽略
+  }
+}
+
+// renderProbeList 渲染/更新所有探针卡片
+function renderProbeList(probes) {
+  const container = document.getElementById('probe-list');
+  const emptyEl   = document.getElementById('probe-empty');
+
+  if (!probes || probes.length === 0) {
+    if (emptyEl) emptyEl.style.display = 'block';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  // 更新摘要（up/total）
+  const upCount = probes.filter(p => p.status === 'up').length;
+  const summary = document.getElementById('probe-summary');
+  if (summary) summary.textContent = `${upCount} / ${probes.length} 在线`;
+
+  // 已存在的卡片名称集合
+  const existingNames = new Set(
+    [...container.querySelectorAll('.probe-card')].map(c => c.dataset.name)
+  );
+  const incomingNames = new Set(probes.map(p => p.name));
+
+  // 移除已删除探针的卡片
+  existingNames.forEach(name => {
+    if (!incomingNames.has(name)) {
+      document.getElementById('probe-card-' + name)?.remove();
+      if (sparklineCharts[name]) {
+        sparklineCharts[name].destroy();
+        delete sparklineCharts[name];
+      }
+    }
+  });
+
+  // 创建或更新卡片
+  probes.forEach(probe => {
+    if (!document.getElementById('probe-card-' + probe.name)) {
+      const card = document.createElement('div');
+      card.className = 'probe-card';
+      card.id = 'probe-card-' + probe.name;
+      card.dataset.name = probe.name;
+      card.innerHTML = probeCardTemplate(probe.name, probe.url, probe.method);
+      container.appendChild(card);
+    }
+    updateProbeCardData(probe);
+  });
+}
+
+// probeCardTemplate 生成探针卡片的静态 HTML 骨架（动态数据通过 updateProbeCardData 填充）
+function probeCardTemplate(name, url, method) {
+  const safeId = escapeHtml(name);
+  return `
+    <div class="probe-card-top">
+      <div class="probe-info-col">
+        <div class="probe-name">${escapeHtml(name)}</div>
+        <div class="probe-url">${escapeHtml(method || 'GET')} ${escapeHtml(url)}</div>
+      </div>
+      <div class="probe-metrics-col">
+        <span class="probe-status-badge probe-unknown" id="pbadge-${safeId}">?</span>
+        <span class="probe-rt" id="prt-${safeId}">—</span>
+        <span class="probe-uptime-val" id="puptime-${safeId}">—</span>
+      </div>
+    </div>
+    <div class="probe-dots" id="pdots-${safeId}"></div>
+    <div class="probe-sparkline-wrap">
+      <canvas id="sparkline-${safeId}"></canvas>
+    </div>`;
+}
+
+// updateProbeCardData 更新探针卡片的动态内容（状态、响应时间、圆点、火花图）
+function updateProbeCardData(probe) {
+  const id = probe.name;
+  const badge   = document.getElementById('pbadge-'   + id);
+  const rtEl    = document.getElementById('prt-'      + id);
+  const uptimeEl= document.getElementById('puptime-'  + id);
+  const dotsEl  = document.getElementById('pdots-'    + id);
+
+  // 状态徽章
+  if (badge) {
+    const st = probe.status || 'unknown';
+    badge.textContent = st === 'up' ? 'UP' : st === 'down' ? 'DOWN' : '?';
+    badge.className = 'probe-status-badge probe-' + st;
+  }
+  // 响应时间
+  if (rtEl) {
+    rtEl.textContent = probe.status === 'unknown' ? '—' : probe.response_ms + 'ms';
+  }
+  // 可用率
+  if (uptimeEl) {
+    uptimeEl.textContent = probe.status === 'unknown' ? '—'
+      : (probe.uptime_pct !== undefined ? probe.uptime_pct.toFixed(1) + '%' : '—');
+  }
+  // 状态历史圆点（升序：最旧在左）
+  if (dotsEl) {
+    const hist = probe.recent_history || [];
+    dotsEl.innerHTML = hist.map(r =>
+      `<span class="probe-dot ${r.status === 'up' ? 'dot-up' : 'dot-down'}"
+             title="${r.status} ${r.response_ms}ms"></span>`
+    ).join('');
+  }
+  // 响应时间火花图
+  updateSparkline(probe);
+}
+
+// updateSparkline 创建或更新 Chart.js 火花图
+function updateSparkline(probe) {
+  const canvas = document.getElementById('sparkline-' + probe.name);
+  if (!canvas) return;
+
+  const hist   = probe.recent_history || [];
+  const data   = hist.map(r => r.response_ms);
+  const labels = hist.map(() => '');
+  const colors = hist.map(r => r.status === 'up' ? '#3fb950' : '#f85149');
+
+  if (sparklineCharts[probe.name]) {
+    const ch = sparklineCharts[probe.name];
+    ch.data.labels = labels;
+    ch.data.datasets[0].data = data;
+    ch.data.datasets[0].pointBackgroundColor = colors;
+    ch.update('none');
+  } else {
+    const ctx = canvas.getContext('2d');
+    sparklineCharts[probe.name] = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          data,
+          borderColor: '#58a6ff',
+          borderWidth: 1.5,
+          pointRadius: hist.map(() => 3),
+          pointBackgroundColor: colors,
+          tension: 0.3,
+          fill: false,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => `${ctx.parsed.y}ms`,
+            }
+          }
+        },
+        scales: {
+          x: { display: false },
+          y: { display: false, min: 0 },
+        }
+      }
+    });
+  }
+}
+
+// 添加探针模态框逻辑
+document.getElementById('add-probe-btn').addEventListener('click', () => {
+  document.getElementById('probe-modal').classList.add('open');
+  document.getElementById('probe-modal-error').style.display = 'none';
+});
+document.getElementById('probe-modal-cancel').addEventListener('click', () => {
+  document.getElementById('probe-modal').classList.remove('open');
+});
+document.getElementById('probe-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('probe-modal'))
+    document.getElementById('probe-modal').classList.remove('open');
+});
+
+document.getElementById('probe-modal-submit').addEventListener('click', async () => {
+  const errEl = document.getElementById('probe-modal-error');
+  errEl.style.display = 'none';
+  const cfg = {
+    name:            document.getElementById('pf-name').value.trim(),
+    url:             document.getElementById('pf-url').value.trim(),
+    method:          document.getElementById('pf-method').value,
+    expected_status: parseInt(document.getElementById('pf-status').value, 10),
+    interval_seconds:parseInt(document.getElementById('pf-interval').value, 10),
+    timeout_ms:      parseInt(document.getElementById('pf-timeout').value, 10),
+  };
+  try {
+    const resp = await fetch(PROBES_API, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(cfg),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      errEl.textContent = data.error || '添加失败';
+      errEl.style.display = 'block';
+      return;
+    }
+    document.getElementById('probe-modal').classList.remove('open');
+    fetchProbes();
+  } catch(e) {
+    errEl.textContent = '网络错误: ' + String(e);
+    errEl.style.display = 'block';
+  }
+});
+
+document.getElementById('probe-refresh-btn').addEventListener('click', fetchProbes);
+
+// 切换到 Uptime 标签时刷新
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  if (btn.dataset.tab === 'uptime') {
+    btn.addEventListener('click', fetchProbes);
+  }
+});
+
+// 初始加载 + 每 30 秒刷新一次
+fetchProbes();
+setInterval(fetchProbes, 30000);
 </script>
 </body>
 </html>
