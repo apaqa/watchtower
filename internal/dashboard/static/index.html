@@ -853,6 +853,76 @@
     /* Add panel modal */
     #panel-modal .modal { width: min(480px, 95vw); }
 
+    /* ── Light theme ── */
+    :root.light {
+      --bg:      #ffffff;
+      --surface: #f6f8fa;
+      --border:  #d0d7de;
+      --text:    #1f2328;
+      --muted:   #656d76;
+      --accent:  #0969da;
+      --green:   #1a7f37;
+      --yellow:  #9a6700;
+      --red:     #d1242f;
+      --purple:  #8250df;
+    }
+    :root.light #wql-result th { background: var(--bg); }
+    :root.light .tab-btn.active { color: var(--accent); }
+    :root.light .wf-track { background: rgba(208,215,222,0.5); }
+
+    /* ── Theme & refresh controls ── */
+    #theme-btn, #refresh-select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.82rem;
+      padding: 5px 10px;
+    }
+    #theme-btn { font-size: 1rem; padding: 4px 8px; }
+    #refresh-select:focus, #theme-btn:focus { outline: none; border-color: var(--accent); }
+
+    /* ── Notification history panel ── */
+    .notify-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      margin-top: 16px;
+    }
+    .notify-panel .panel-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    #notify-list {
+      max-height: 240px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .notify-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.82rem;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .notify-item:last-child { border-bottom: none; }
+    .notify-ch  { color: var(--purple); font-family: monospace; font-size: 0.78rem; min-width: 70px; }
+    .notify-sent   { background: rgba(63,185,80,0.15); color: var(--green); border: 1px solid rgba(63,185,80,0.3); padding: 1px 7px; border-radius: 4px; font-size: 0.72rem; font-weight: 700; }
+    .notify-failed { background: rgba(248,81,73,0.15);  color: var(--red);   border: 1px solid rgba(248,81,73,0.3);  padding: 1px 7px; border-radius: 4px; font-size: 0.72rem; font-weight: 700; }
+    .notify-err { color: var(--red); font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
     /* ── Footer ── */
     footer {
       text-align: center;
@@ -868,6 +938,16 @@
 <header>
   <div class="logo">Watch<span>Tower</span></div>
   <div style="margin-left:auto;display:flex;align-items:center;gap:12px">
+    <!-- Auto-refresh control -->
+    <select id="refresh-select" title="Dashboard auto-refresh interval">
+      <option value="5000">5s</option>
+      <option value="10000">10s</option>
+      <option value="30000" selected>30s</option>
+      <option value="60000">60s</option>
+      <option value="0">Paused</option>
+    </select>
+    <!-- Theme toggle -->
+    <button id="theme-btn" title="Toggle light/dark theme">🌙</button>
     <!-- API Key auth field -->
     <div id="auth-area" style="display:flex;align-items:center;gap:6px">
       <span id="auth-icon" style="font-size:1rem;cursor:default" title="Authentication status">🔓</span>
@@ -1015,6 +1095,18 @@
     <div id="active-alerts-list"><span class="no-alerts">No active alerts</span></div>
     <div class="history-title">Recent State Changes</div>
     <div id="alert-history-list"></div>
+  </div>
+
+  <!-- Notification History panel -->
+  <div class="notify-panel">
+    <div class="panel-title">
+      Notification History
+      <span id="notify-count" style="font-size:0.78rem;font-weight:400;color:var(--muted)"></span>
+      <button id="notify-refresh-btn" style="margin-left:auto;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.8rem;">↻ Refresh</button>
+    </div>
+    <div id="notify-list">
+      <div style="color:var(--muted);font-size:0.85rem">No notifications sent yet</div>
+    </div>
   </div>
 
 </div><!-- /#tab-alerts -->
@@ -2296,6 +2388,121 @@ document.getElementById('api-key-input').addEventListener('keydown', e => {
   }
   if (e.key === 'Enter') document.getElementById('api-key-save').click();
 });
+
+// ── Theme toggle ───────────────────────────────────────────────────────────────
+const THEME_KEY = 'watchtower_theme';
+
+function applyTheme(theme) {
+  if (theme === 'light') {
+    document.documentElement.classList.add('light');
+    document.getElementById('theme-btn').textContent = '☀️';
+  } else {
+    document.documentElement.classList.remove('light');
+    document.getElementById('theme-btn').textContent = '🌙';
+  }
+}
+
+// Restore saved theme on load
+applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
+
+document.getElementById('theme-btn').addEventListener('click', () => {
+  const current = document.documentElement.classList.contains('light') ? 'light' : 'dark';
+  const next = current === 'light' ? 'dark' : 'light';
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
+});
+
+// ── Auto-refresh control ───────────────────────────────────────────────────────
+// The WebSocket still pushes every 5s from the server; the refresh select
+// controls client-side display update throttling for polled data (probes, agents, etc.)
+// and suppresses metric chart updates when "Paused".
+const REFRESH_KEY = 'watchtower_refresh';
+
+let displayPaused = false;
+let displayInterval = 30000;
+
+function applyRefreshInterval(val) {
+  const n = parseInt(val, 10);
+  displayPaused = (n === 0);
+  displayInterval = n || 30000;
+  localStorage.setItem(REFRESH_KEY, String(n));
+}
+
+// Restore on load
+const savedRefresh = localStorage.getItem(REFRESH_KEY);
+if (savedRefresh !== null) {
+  const sel = document.getElementById('refresh-select');
+  // Find matching option or fall back to default
+  const opt = [...sel.options].find(o => o.value === savedRefresh);
+  if (opt) sel.value = savedRefresh;
+  applyRefreshInterval(savedRefresh);
+}
+
+document.getElementById('refresh-select').addEventListener('change', e => {
+  applyRefreshInterval(e.target.value);
+});
+
+// Wrap handleMessage to respect pause
+const _origHandleMessage = handleMessage;
+// Override handleMessage to skip metric updates when paused
+window.handleMessage = function(data) {
+  if (displayPaused) return;
+  _origHandleMessage(data);
+};
+// Rebind WebSocket onmessage to use the overridden handler
+const _origConnect = connect;
+ws.onmessage = (evt) => {
+  try { window.handleMessage(JSON.parse(evt.data)); }
+  catch(e) { console.warn('message parse failed', e); }
+};
+
+// ── Notification History ───────────────────────────────────────────────────────
+const NOTIFY_API = 'http://localhost:9090/api/v1/notifications';
+
+async function fetchNotifications() {
+  try {
+    const resp = await apiFetch(NOTIFY_API);
+    if (!resp.ok) return;
+    const records = await resp.json();
+    renderNotifications(records || []);
+  } catch(_) {}
+}
+
+function renderNotifications(records) {
+  const list = document.getElementById('notify-list');
+  const countEl = document.getElementById('notify-count');
+  if (!records || records.length === 0) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:0.85rem">No notifications sent yet</div>';
+    countEl.textContent = '';
+    return;
+  }
+  countEl.textContent = records.length + ' total';
+  list.innerHTML = records.slice(0, 50).map(r => {
+    const t = new Date(r.timestamp).toLocaleTimeString('en-US', {hour12:false});
+    const statusCls = r.status === 'sent' ? 'notify-sent' : 'notify-failed';
+    const sevCls = r.severity === 'critical' ? 'badge-critical'
+                 : r.severity === 'warning'  ? 'badge-warning'
+                 : 'badge-info';
+    return `<div class="notify-item">
+      <span class="history-time">${t}</span>
+      <span class="notify-ch">${escapeHtml(r.channel_type)}</span>
+      <span class="badge ${sevCls}" style="font-size:0.72rem;padding:2px 7px">${escapeHtml(r.severity)}</span>
+      <span class="history-name">${escapeHtml(r.alert_name)}</span>
+      <span class="${statusCls}">${r.status}</span>
+      ${r.error ? `<span class="notify-err" title="${escapeHtml(r.error)}">${escapeHtml(r.error)}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('notify-refresh-btn').addEventListener('click', fetchNotifications);
+
+// Refresh when switching to Alerts tab
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  if (btn.dataset.tab === 'alerts') btn.addEventListener('click', fetchNotifications);
+});
+
+fetchNotifications();
+setInterval(fetchNotifications, 30000);
 </script>
 </body>
 </html>

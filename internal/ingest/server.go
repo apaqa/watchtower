@@ -13,6 +13,7 @@ import (
 	"github.com/apaqa/watchtower/internal/auth"
 	"github.com/apaqa/watchtower/internal/logstore"
 	"github.com/apaqa/watchtower/internal/model"
+	"github.com/apaqa/watchtower/internal/notify"
 	"github.com/apaqa/watchtower/internal/probe"
 	"github.com/apaqa/watchtower/internal/registry"
 	"github.com/apaqa/watchtower/internal/tracestore"
@@ -94,6 +95,11 @@ func (s *Server) RegisterTraceStore(ts *tracestore.Store) {
 // RegisterAgentRegistry registers agent registry API routes (must be called before Start).
 func (s *Server) RegisterAgentRegistry(reg *registry.Registry) {
 	registry.RegisterRoutes(s.mux, reg)
+}
+
+// RegisterNotifyRouter 注册通知历史 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterNotifyRouter(r *notify.Router) {
+	notify.RegisterRoutes(s.mux, r.History())
 }
 
 // RegisterLogStore 注入日志存储并注册日志 API 路由（必须在 Start 之前调用）

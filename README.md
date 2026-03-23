@@ -110,6 +110,15 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - Full CRUD REST API: list, get, delete agents
 - System agent now embeds `agent_id` label on every metric data point
 
+### Multi-Channel Notifications
+- Five channel types: **Console** (stdout), **Webhook** (generic JSON POST), **Slack** (attachments with color-coded severity), **Discord** (embeds), **Email** (net/smtp with PLAIN auth)
+- `notify.Router` routes each `Notification` to all channels whose severity filter matches; dispatches in goroutines so notifications never block the alert evaluation loop
+- Per-channel severity filter: e.g. send Slack only for `critical`, email for all
+- Notification history ring buffer stores the last 200 results (channel type, alert name, severity, sent/failed status, error message)
+- `GET /api/v1/notifications` returns the full history as JSON
+- Alert engine checks: if a `Router` is set → call `router.Dispatch()`; else fall back to rule-level `webhook_url`
+- Channels configured via `notifications.channels[]` in `watchtower.yaml`
+
 ### Custom Dashboard Panels
 - Users can define custom metric panels from any WQL expression via the dashboard UI
 - In-memory `PanelStore` backed by ordered insertion; supports `stat` and `gauge` panel types
@@ -128,6 +137,9 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - Trace list with service filter and min-duration filter; click any trace to expand a proportional **waterfall diagram**
 - **Agents tab**: table with hostname, IP, OS, status badge (online/offline), last-seen (relative), registered time; "X Online / Y Offline" summary; auto-refreshes every 15 seconds
 - **Custom Panels** section in the Metrics tab: "+ Add Panel" button opens a modal; each panel auto-refreshes its WQL query at the configured interval
+- **Notification History** section in the Alerts tab: lists the last 50 sent/failed notifications with channel type, severity badge, and error details
+- **Theme toggle**: 🌙/☀️ button in header switches between dark and light themes; preference stored in `localStorage`
+- **Auto-refresh selector** in header: 5s / 10s / 30s / 60s / Paused; preference stored in `localStorage`; "Paused" suspends metric chart and UI updates while keeping WebSocket connected
 
 ### YAML Configuration
 - `watchtower.yaml` at project root controls all ports, intervals, and pre-loaded rules/probes
@@ -594,6 +606,63 @@ Panel schema:
 ```
 
 `panel_type` is `"stat"` (large number) or `"gauge"` (percentage). `refresh_interval` minimum is 5 seconds.
+
+### Notification History
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/notifications` | List last 200 sent/failed notifications |
+
+```bash
+curl http://localhost:9090/api/v1/notifications
+```
+
+Response (array, newest first):
+
+```json
+[
+  {
+    "timestamp":    "2026-03-23T10:00:00Z",
+    "channel_type": "slack",
+    "alert_name":   "high_cpu",
+    "severity":     "critical",
+    "state":        "firing",
+    "status":       "sent"
+  },
+  {
+    "timestamp":    "2026-03-23T09:55:00Z",
+    "channel_type": "webhook",
+    "alert_name":   "high_memory",
+    "severity":     "warning",
+    "state":        "firing",
+    "status":       "failed",
+    "error":        "webhook POST failed: connection refused"
+  }
+]
+```
+
+Configure channels in `watchtower.yaml`:
+
+```yaml
+notifications:
+  channels:
+    - type: console                          # always logs to stdout
+    - type: webhook
+      url: https://hooks.example.com/alert
+      severities: [critical, warning]       # omit to receive all
+    - type: slack
+      url: https://hooks.slack.com/services/T00/B00/xxx
+      severities: [critical]
+    - type: discord
+      url: https://discord.com/api/webhooks/xxx/yyy
+    - type: email
+      smtp_host: smtp.example.com
+      smtp_port: 587
+      from: alerts@example.com
+      to: [oncall@example.com]
+      smtp_username: alerts@example.com
+      smtp_password: secret
+```
 
 ### WebSocket `/ws`
 

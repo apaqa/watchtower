@@ -17,6 +17,7 @@ import (
 	"github.com/apaqa/watchtower/internal/dashboard"
 	"github.com/apaqa/watchtower/internal/ingest"
 	"github.com/apaqa/watchtower/internal/logstore"
+	"github.com/apaqa/watchtower/internal/notify"
 	"github.com/apaqa/watchtower/internal/probe"
 	"github.com/apaqa/watchtower/internal/registry"
 	"github.com/apaqa/watchtower/internal/tracestore"
@@ -58,6 +59,41 @@ func main() {
 	}
 	alertEng.Start()
 	defer alertEng.Stop()
+
+	// ── 3b. Build notification router from config ─────────────────────────────
+	notifyRouter := notify.NewRouter()
+	for _, ch := range cfg.Notifications.Channels {
+		var channel notify.Channel
+		switch ch.Type {
+		case "console":
+			channel = notify.NewConsoleChannel()
+		case "webhook":
+			if ch.URL != "" {
+				channel = notify.NewWebhookChannel(ch.URL)
+			}
+		case "slack":
+			if ch.URL != "" {
+				channel = notify.NewSlackChannel(ch.URL)
+			}
+		case "discord":
+			if ch.URL != "" {
+				channel = notify.NewDiscordChannel(ch.URL)
+			}
+		case "email":
+			if ch.SMTPHost != "" && ch.From != "" && len(ch.To) > 0 {
+				port := ch.SMTPPort
+				if port == 0 {
+					port = 587
+				}
+				channel = notify.NewEmailChannel(ch.SMTPHost, port, ch.From, ch.To, ch.SMTPUsername, ch.SMTPPassword)
+			}
+		}
+		if channel != nil {
+			notifyRouter.AddChannel(channel, ch.Severities)
+		}
+	}
+	alertEng.SetRouter(notifyRouter)
+	fmt.Printf("Notify: %d channel(s) configured\n", len(cfg.Notifications.Channels))
 
 	// ── 4. Initialize log store ───────────────────────────────────────────────
 	logStore := logstore.New()
@@ -124,6 +160,7 @@ func main() {
 	ingestSrv.RegisterProbeManager(probeMgr)
 	ingestSrv.RegisterTraceStore(traceStore)
 	ingestSrv.RegisterAgentRegistry(agentRegistry)
+	ingestSrv.RegisterNotifyRouter(notifyRouter)
 	ingestSrv.RegisterKeyStore(keyStore)
 	go func() {
 		if err := ingestSrv.Start(); err != nil {
@@ -186,6 +223,7 @@ func main() {
 	fmt.Printf("Traces:  %s/api/v1/traces\n", base)
 	fmt.Printf("Agents:  %s/api/v1/agents\n", base)
 	fmt.Printf("Auth:    %s/api/v1/auth/keys\n", base)
+	fmt.Printf("Notify:  %s/api/v1/notifications\n", base)
 	fmt.Printf("Scrape:  %s/metrics  (Prometheus scrape endpoint)\n", base)
 	fmt.Printf("Prom:    %s/api/v1/metrics/prometheus  (Prometheus push)\n", base)
 	fmt.Printf("Panels:  http://localhost:%d/api/v1/dashboard/panels\n", cfg.Server.DashboardPort)

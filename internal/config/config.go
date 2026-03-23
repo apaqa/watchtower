@@ -10,12 +10,13 @@ import (
 
 // Config 是顶级配置结构，对应 watchtower.yaml 文件
 type Config struct {
-	Server    ServerConfig     `yaml:"server"`
-	Agent     AgentConfig      `yaml:"agent"`
-	Retention RetentionConfig  `yaml:"retention"`
-	Endpoints []EndpointConfig `yaml:"endpoints"`
-	Alerts    []AlertConfig    `yaml:"alerts"`
-	APIKeys   []APIKeyConfig   `yaml:"api_keys"`
+	Server        ServerConfig        `yaml:"server"`
+	Agent         AgentConfig         `yaml:"agent"`
+	Retention     RetentionConfig     `yaml:"retention"`
+	Endpoints     []EndpointConfig    `yaml:"endpoints"`
+	Alerts        []AlertConfig       `yaml:"alerts"`
+	APIKeys       []APIKeyConfig      `yaml:"api_keys"`
+	Notifications NotificationsConfig `yaml:"notifications"`
 }
 
 // ServerConfig 控制 HTTP 服务监听端口
@@ -52,6 +53,26 @@ type APIKeyConfig struct {
 	Name        string   `yaml:"name"`        // 人类可读标识
 	Key         string   `yaml:"key"`         // 密钥明文（建议在生产中使用环境变量替换）
 	Permissions []string `yaml:"permissions"` // "read" | "write" | "admin"
+}
+
+// NotificationsConfig 描述通知系统的顶级配置
+type NotificationsConfig struct {
+	Channels []ChannelConfig `yaml:"channels"` // 通知渠道列表
+}
+
+// ChannelConfig 描述单个通知渠道
+type ChannelConfig struct {
+	Type       string   `yaml:"type"`       // "console" | "webhook" | "slack" | "discord" | "email"
+	Severities []string `yaml:"severities"` // 过滤的严重级别；为空时接收所有级别
+	URL        string   `yaml:"url"`        // Webhook/Slack/Discord 的目标 URL
+
+	// Email 专用字段
+	SMTPHost     string   `yaml:"smtp_host"`
+	SMTPPort     int      `yaml:"smtp_port"`
+	From         string   `yaml:"from"`
+	To           []string `yaml:"to"`
+	SMTPUsername string   `yaml:"smtp_username"`
+	SMTPPassword string   `yaml:"smtp_password"`
 }
 
 // AlertConfig 描述一条预定义告警规则

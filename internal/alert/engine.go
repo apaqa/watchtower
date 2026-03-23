@@ -1,4 +1,4 @@
-// Package alert - 告警引擎：周期性求值规则、驱动状态机、发送 Webhook 通知
+// Package alert - 告警引擎：周期性求值规则、驱动状态机、发送 Webhook/多渠道通知
 package alert
 
 import (
@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apaqa/watchtower/internal/notify"
 	"github.com/apaqa/watchtower/internal/tsdb"
 	"github.com/apaqa/watchtower/internal/wql"
 )
@@ -22,13 +23,14 @@ const (
 
 // Engine 是告警引擎，负责周期性求值规则、维护状态机并发送通知
 type Engine struct {
-	mu      sync.RWMutex
-	db      *tsdb.TSDB
-	rules   map[string]*AlertRule // 规则名称 → 规则
-	alerts  map[string]*Alert     // 规则名称 → 当前告警状态
-	history []*AlertEvent         // 最近 maxHistory 条状态变化记录（最新在前）
-	stopCh  chan struct{}
-	client  *http.Client // 用于发送 Webhook 请求
+	mu           sync.RWMutex
+	db           *tsdb.TSDB
+	rules        map[string]*AlertRule // 规则名称 → 规则
+	alerts       map[string]*Alert     // 规则名称 → 当前告警状态
+	history      []*AlertEvent         // 最近 maxHistory 条状态变化记录（最新在前）
+	stopCh       chan struct{}
+	client       *http.Client   // 用于发送 Webhook 请求
+	notifyRouter *notify.Router // 多渠道通知路由器（可选）
 }
 
 // NewEngine 创建告警引擎实例
@@ -114,6 +116,13 @@ func (e *Engine) Start() {
 // Stop 停止评估循环
 func (e *Engine) Stop() {
 	close(e.stopCh)
+}
+
+// SetRouter 设置多渠道通知路由器；为 nil 时回退到规则级 WebhookURL
+func (e *Engine) SetRouter(r *notify.Router) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.notifyRouter = r
 }
 
 // Evaluate 立即对所有规则执行一轮评估（主要用于测试）
@@ -298,11 +307,27 @@ func (e *Engine) evaluateRule(rule *AlertRule) {
 	}
 
 	webhookURL := rule.WebhookURL
+	router := e.notifyRouter
 	e.mu.Unlock()
 
-	// 第三步：在锁外发送 Webhook（避免在持锁时执行 I/O）
-	if webhookPayload != nil && webhookURL != "" {
-		go e.postWebhook(webhookURL, *webhookPayload)
+	// 第三步：在锁外发送通知（避免在持锁时执行 I/O）
+	if webhookPayload != nil {
+		if router != nil {
+			// 优先使用多渠道路由器
+			n := notify.Notification{
+				AlertName:  webhookPayload.AlertName,
+				Severity:   webhookPayload.Severity,
+				Value:      webhookPayload.Value,
+				Message:    webhookPayload.Message,
+				State:      string(webhookPayload.State),
+				FiredAt:    webhookPayload.FiredAt,
+				ResolvedAt: webhookPayload.ResolvedAt,
+			}
+			router.Dispatch(n)
+		} else if webhookURL != "" {
+			// 回退到规则级 Webhook
+			go e.postWebhook(webhookURL, *webhookPayload)
+		}
 	}
 }
 

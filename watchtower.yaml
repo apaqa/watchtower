@@ -45,6 +45,27 @@ alerts:
     duration: 5m
     severity: critical
 
+# 通知渠道（可选）：告警触发/恢复时向指定渠道发送通知
+# severities 为空表示接收所有级别；支持的类型：console、webhook、slack、discord、email
+# notifications:
+#   channels:
+#     - type: console                      # 打印到终端，适合开发调试
+#     - type: webhook
+#       url: https://hooks.example.com/alert
+#       severities: [critical, warning]
+#     - type: slack
+#       url: https://hooks.slack.com/services/T00/B00/xxx
+#       severities: [critical]
+#     - type: discord
+#       url: https://discord.com/api/webhooks/xxx/yyy
+#     - type: email
+#       smtp_host: smtp.example.com
+#       smtp_port: 587
+#       from: alerts@example.com
+#       to: [oncall@example.com]
+#       smtp_username: alerts@example.com
+#       smtp_password: secret
+
 # API 密钥（可选）：取消注释后，所有 /api/ 端点将要求有效密钥
 # 密钥可通过 POST /api/v1/auth/keys 动态创建（需要 admin 权限）
 # api_keys:
