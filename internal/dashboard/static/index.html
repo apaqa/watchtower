@@ -1173,6 +1173,22 @@
   <!-- SLO cards injected here by JS -->
   <div id="slo-container" style="display:contents"></div>
 
+  <!-- Aggregation Pipeline section -->
+  <div class="slo-section-header" style="margin-top:1.5rem">
+    <span class="slo-section-label">Aggregation Rules</span>
+    <button id="add-rule-btn">+ Add Rule</button>
+  </div>
+  <div id="pipeline-container" style="display:contents"></div>
+
+  <!-- Export section -->
+  <div class="slo-section-header" style="margin-top:1.5rem">
+    <span class="slo-section-label">Export Metrics</span>
+    <span style="display:flex;gap:0.5rem">
+      <button onclick="exportData('metrics','csv')">CSV</button>
+      <button onclick="exportData('metrics','json')">JSON</button>
+    </span>
+  </div>
+
 </div><!-- /#tab-metrics -->
 
 <!-- ── Logs tab ─────────────────────────────────────────────────────────── -->
@@ -1211,6 +1227,15 @@
         </tbody>
       </table>
     </div>
+  </div>
+
+  <!-- Log export -->
+  <div class="slo-section-header" style="margin-top:1rem">
+    <span class="slo-section-label">Export Logs</span>
+    <span style="display:flex;gap:0.5rem">
+      <button onclick="exportData('logs','csv')">CSV</button>
+      <button onclick="exportData('logs','json')">JSON</button>
+    </span>
   </div>
 
 </div><!-- /#tab-logs -->
@@ -2968,6 +2993,127 @@ document.getElementById('slo-modal-submit').addEventListener('click', async () =
 
 fetchSLOs();
 setInterval(fetchSLOs, 30000);
+
+// ── 聚合规则管理 ──────────────────────────────────────────────────────────────
+const INGEST_BASE = 'http://localhost:9090';
+
+async function fetchPipelineRules() {
+  try {
+    const res = await fetch(INGEST_BASE + '/api/v1/pipeline/rules');
+    const rules = await res.json();
+    renderPipelineRules(rules || []);
+  } catch(e) { console.warn('pipeline fetch error:', e); }
+}
+
+function renderPipelineRules(rules) {
+  const container = document.getElementById('pipeline-container');
+  if (!container) return;
+  if (rules.length === 0) {
+    container.innerHTML = '<div style="color:var(--muted);padding:0.5rem 0;font-size:0.85rem">No aggregation rules defined.</div>';
+    return;
+  }
+  container.innerHTML = rules.map(r => `
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:0.75rem 1rem;margin:0.4rem 0;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <strong>${r.name}</strong>
+        <span style="color:var(--muted);font-size:0.8rem;margin-left:0.5rem">${r.input_metric} → ${r.output_metric}</span>
+        <span style="color:var(--accent);font-size:0.8rem;margin-left:0.5rem">[${r.aggregation} / ${r.window}]</span>
+        ${r.group_by && r.group_by.length ? `<span style="color:var(--muted);font-size:0.78rem;margin-left:0.4rem">group by: ${r.group_by.join(', ')}</span>` : ''}
+      </div>
+      <button onclick="deleteRule('${r.name}')" style="padding:2px 10px;font-size:0.8rem">Delete</button>
+    </div>
+  `).join('');
+}
+
+async function deleteRule(name) {
+  if (!confirm('Delete rule "' + name + '"?')) return;
+  await fetch(INGEST_BASE + '/api/v1/pipeline/rules/' + encodeURIComponent(name), { method: 'DELETE' });
+  fetchPipelineRules();
+}
+
+// Add Rule modal
+document.getElementById('add-rule-btn').addEventListener('click', () => {
+  document.getElementById('rule-modal').style.display = 'flex';
+});
+
+document.getElementById('rule-cancel-btn').addEventListener('click', () => {
+  document.getElementById('rule-modal').style.display = 'none';
+});
+
+document.getElementById('rule-save-btn').addEventListener('click', async () => {
+  const rule = {
+    name: document.getElementById('rule-name').value.trim(),
+    input_metric: document.getElementById('rule-input').value.trim(),
+    output_metric: document.getElementById('rule-output').value.trim(),
+    aggregation: document.getElementById('rule-agg').value,
+    window: document.getElementById('rule-window').value,
+    group_by: document.getElementById('rule-groupby').value.trim()
+      ? document.getElementById('rule-groupby').value.trim().split(',').map(s => s.trim()).filter(Boolean)
+      : []
+  };
+  const errEl = document.getElementById('rule-error');
+  errEl.style.display = 'none';
+  try {
+    const res = await fetch(INGEST_BASE + '/api/v1/pipeline/rules', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(rule)
+    });
+    if (!res.ok) { errEl.textContent = await res.text(); errEl.style.display = 'block'; return; }
+    document.getElementById('rule-modal').style.display = 'none';
+    fetchPipelineRules();
+  } catch(e) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+});
+
+fetchPipelineRules();
+setInterval(fetchPipelineRules, 30000);
+
+// ── 数据导出 ──────────────────────────────────────────────────────────────────
+function exportData(type, format) {
+  const url = INGEST_BASE + '/api/v1/export/' + type + '?format=' + format;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = type + '.' + format;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
 </script>
+
+<!-- ── Add Rule modal ───────────────────────────────────────────────────────── -->
+<div id="rule-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:1.5rem;width:400px;max-width:95vw">
+    <div style="font-weight:700;font-size:1.05rem;margin-bottom:1rem">Add Aggregation Rule</div>
+    <label style="display:block;margin-bottom:0.5rem;font-size:0.85rem">Rule Name</label>
+    <input id="rule-name" type="text" placeholder="e.g. cpu_avg_1m" style="width:100%;margin-bottom:0.75rem;padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px">
+    <label style="display:block;margin-bottom:0.5rem;font-size:0.85rem">Input Metric</label>
+    <input id="rule-input" type="text" placeholder="e.g. cpu_usage_percent" style="width:100%;margin-bottom:0.75rem;padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px">
+    <label style="display:block;margin-bottom:0.5rem;font-size:0.85rem">Output Metric</label>
+    <input id="rule-output" type="text" placeholder="e.g. cpu_avg" style="width:100%;margin-bottom:0.75rem;padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px">
+    <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
+      <div style="flex:1">
+        <label style="display:block;margin-bottom:0.5rem;font-size:0.85rem">Aggregation</label>
+        <select id="rule-agg" style="width:100%;padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px">
+          <option>avg</option><option>sum</option><option>max</option><option>min</option>
+          <option>count</option><option>p50</option><option>p95</option><option>p99</option>
+        </select>
+      </div>
+      <div style="flex:1">
+        <label style="display:block;margin-bottom:0.5rem;font-size:0.85rem">Window</label>
+        <select id="rule-window" style="width:100%;padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px">
+          <option value="1m">1m</option><option value="5m">5m</option><option value="1h">1h</option>
+        </select>
+      </div>
+    </div>
+    <label style="display:block;margin-bottom:0.5rem;font-size:0.85rem">Group By (comma-separated label keys, optional)</label>
+    <input id="rule-groupby" type="text" placeholder="e.g. host, service" style="width:100%;margin-bottom:1rem;padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px">
+    <div id="rule-error" style="display:none;color:var(--red);font-size:0.8rem;margin-bottom:0.75rem"></div>
+    <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+      <button id="rule-cancel-btn" style="padding:6px 16px">Cancel</button>
+      <button id="rule-save-btn" style="padding:6px 16px;background:var(--accent);color:#0d1117;border:none">Save Rule</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

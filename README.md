@@ -127,6 +127,24 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - `POST /api/v1/slos` creates an SLO; `DELETE /api/v1/slos/{name}` removes it
 - Dashboard **SLO Status** section in Metrics tab: progress bar per SLO (green/yellow/red), "+ Add SLO" modal
 
+### Metrics Aggregation Pipeline
+- Define rules to continuously aggregate raw metrics into new derived series
+- Each rule specifies: input metric, output metric, aggregation function, time window, and optional `group_by` label keys
+- **Aggregation functions**: `avg`, `sum`, `max`, `min`, `count`, `p50`, `p95`, `p99`
+- **Windows**: `1m`, `5m`, `1h`
+- Background goroutine evaluates all rules every minute and writes results back to TSDB, making them queryable via WQL
+- `group_by` partitions the input series by label values; each partition produces a separate output series
+- Percentile functions use linear interpolation for accuracy
+
+### Data Export
+- Export TSDB metrics, logs, or traces as **CSV** or **JSON** via GET requests
+- **Metrics export**: `GET /api/v1/export/metrics?format=csv&name=<metric>&start=<ms>&end=<ms>`
+- **Logs export**: `GET /api/v1/export/logs?format=csv&level=<level>&source=<src>&start=<ms>&end=<ms>`
+- **Traces export**: `GET /api/v1/export/traces?format=json&start=<ms>&end=<ms>` (CSV flattens to span-level rows)
+- Time range defaults to the past hour; all params optional
+- Response includes `Content-Disposition: attachment` header for direct browser download
+- Dashboard **Export** buttons on Metrics and Logs tabs trigger instant download
+
 ### Multi-Channel Notifications
 - Five channel types: **Console** (stdout), **Webhook** (generic JSON POST), **Slack** (attachments with color-coded severity), **Discord** (embeds), **Email** (net/smtp with PLAIN auth)
 - `notify.Router` routes each `Notification` to all channels whose severity filter matches; dispatches in goroutines so notifications never block the alert evaluation loop
@@ -147,6 +165,8 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - Dark-theme single-page app served at `:8080`
 - Live Chart.js line charts via WebSocket push (5-second interval)
 - **Seven tabs**: **Metrics** · **Logs** · **Alerts** · **Endpoints** · **Traces** · **Agents** · **Service Map**
+- **Aggregation Rules** section in Metrics tab: list active rules, "+ Add Rule" modal, delete rules
+- **Export buttons** on Metrics and Logs tabs: one-click CSV/JSON download for the current dataset
 - WQL query box with instant results
 - Log viewer with full-text/regex search and level filter
 - Alert manager with rule creation modal and state history
@@ -198,6 +218,8 @@ go build -o watchtower ./cmd/watchtower
 | Prometheus Ingest | http://localhost:9090/api/v1/metrics/prometheus |
 | Prometheus Scrape | http://localhost:9090/metrics |
 | Custom Panels API | http://localhost:8080/api/v1/dashboard/panels |
+| Pipeline API | http://localhost:9090/api/v1/pipeline/rules |
+| Export API | http://localhost:9090/api/v1/export/metrics |
 
 ## Configuration
 
@@ -744,6 +766,65 @@ Response entry:
 
 The WQL query must return a 0–100 value representing the SLI percentage. Windows: `1d`, `7d`, `30d`.
 
+### Aggregation Pipeline
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`    | `/api/v1/pipeline/rules` | List all aggregation rules |
+| `POST`   | `/api/v1/pipeline/rules` | Create a new aggregation rule |
+| `DELETE` | `/api/v1/pipeline/rules/{name}` | Remove a rule |
+
+```bash
+# Compute p95 request latency per service, every 5 minutes
+curl -X POST http://localhost:9090/api/v1/pipeline/rules \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name":          "latency_p95",
+    "input_metric":  "request_latency_ms",
+    "output_metric": "request_latency_ms_p95",
+    "aggregation":   "p95",
+    "window":        "5m",
+    "group_by":      ["service"]
+  }'
+
+# List rules
+curl http://localhost:9090/api/v1/pipeline/rules
+
+# Delete a rule
+curl -X DELETE http://localhost:9090/api/v1/pipeline/rules/latency_p95
+```
+
+Valid `aggregation` values: `avg` `sum` `max` `min` `count` `p50` `p95` `p99`
+Valid `window` values: `1m` `5m` `1h`
+
+### Data Export
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/export/metrics` | Export metrics as CSV or JSON |
+| `GET` | `/api/v1/export/logs` | Export logs as CSV or JSON |
+| `GET` | `/api/v1/export/traces` | Export traces as CSV or JSON |
+
+Query params:
+- `format` — `csv` (default `json`)
+- `name` — metric name filter (metrics only; omit for all metrics)
+- `level` — log level filter (logs only)
+- `source` — log source filter (logs only)
+- `start`, `end` — Unix millisecond timestamps (default: past 1 hour)
+
+```bash
+# Download last hour of CPU metrics as CSV
+curl "http://localhost:9090/api/v1/export/metrics?format=csv&name=cpu_usage_percent" -o cpu.csv
+
+# Download all logs as JSON
+curl "http://localhost:9090/api/v1/export/logs?format=json" -o logs.json
+
+# Export traces for a specific window
+START=$(date -d '1 hour ago' +%s)000
+END=$(date +%s)000
+curl "http://localhost:9090/api/v1/export/traces?format=csv&start=${START}&end=${END}" -o traces.csv
+```
+
 ### WebSocket `/ws`
 
 Connected clients receive a push every 5 seconds:
@@ -840,7 +921,7 @@ watchtower/
 ## Running Tests
 
 ```bash
-go test ./...                        # all packages (~168 tests)
+go test ./...                        # all packages (~234 tests)
 go test ./internal/auth/...          # auth middleware + key management (19 tests)
 go test ./internal/ingest/...        # ingest server + Prometheus parser (12 new)
 go test ./internal/registry/...      # agent registry + API (15 tests)

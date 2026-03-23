@@ -11,9 +11,11 @@ import (
 
 	"github.com/apaqa/watchtower/internal/alert"
 	"github.com/apaqa/watchtower/internal/auth"
+	"github.com/apaqa/watchtower/internal/export"
 	"github.com/apaqa/watchtower/internal/logstore"
 	"github.com/apaqa/watchtower/internal/model"
 	"github.com/apaqa/watchtower/internal/notify"
+	"github.com/apaqa/watchtower/internal/pipeline"
 	"github.com/apaqa/watchtower/internal/probe"
 	"github.com/apaqa/watchtower/internal/registry"
 	"github.com/apaqa/watchtower/internal/servicemap"
@@ -112,6 +114,16 @@ func (s *Server) RegisterServiceMapBuilder(b *servicemap.Builder) {
 // RegisterSLOStore 注册 SLO CRUD API 路由（必须在 Start 之前调用）
 func (s *Server) RegisterSLOStore(store *slo.Store) {
 	slo.RegisterRoutes(s.mux, store)
+}
+
+// RegisterPipeline 注册聚合管道 CRUD API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterPipeline(p *pipeline.Pipeline) {
+	pipeline.RegisterRoutes(s.mux, p)
+}
+
+// RegisterExportHandler 注册数据导出 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterExportHandler(h *export.Handler) {
+	export.RegisterRoutes(s.mux, h)
 }
 
 // RegisterLogStore 注入日志存储并注册日志 API 路由（必须在 Start 之前调用）

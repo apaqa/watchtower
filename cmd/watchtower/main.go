@@ -15,9 +15,11 @@ import (
 	"github.com/apaqa/watchtower/internal/auth"
 	"github.com/apaqa/watchtower/internal/config"
 	"github.com/apaqa/watchtower/internal/dashboard"
+	"github.com/apaqa/watchtower/internal/export"
 	"github.com/apaqa/watchtower/internal/ingest"
 	"github.com/apaqa/watchtower/internal/logstore"
 	"github.com/apaqa/watchtower/internal/notify"
+	"github.com/apaqa/watchtower/internal/pipeline"
 	"github.com/apaqa/watchtower/internal/probe"
 	"github.com/apaqa/watchtower/internal/registry"
 	"github.com/apaqa/watchtower/internal/servicemap"
@@ -105,9 +107,13 @@ func main() {
 	traceStore := tracestore.New()
 	defer traceStore.Stop()
 
-	// ── 5d. Initialize service map builder and SLO store ─────────────────────
+	// ── 5d. Initialize service map builder, SLO store, pipeline, and export handler ──
 	svcMapBuilder := servicemap.NewBuilder(traceStore)
 	sloStore := slo.NewStore(db)
+	aggPipeline := pipeline.New(db)
+	aggPipeline.Start()
+	defer aggPipeline.Stop()
+	exportHandler := export.New(db, logStore, traceStore)
 
 	// ── 4b. Initialize API key store and pre-load keys from config ───────────
 	keyStore := auth.NewKeyStore()
@@ -169,6 +175,8 @@ func main() {
 	ingestSrv.RegisterNotifyRouter(notifyRouter)
 	ingestSrv.RegisterServiceMapBuilder(svcMapBuilder)
 	ingestSrv.RegisterSLOStore(sloStore)
+	ingestSrv.RegisterPipeline(aggPipeline)
+	ingestSrv.RegisterExportHandler(exportHandler)
 	ingestSrv.RegisterKeyStore(keyStore)
 	go func() {
 		if err := ingestSrv.Start(); err != nil {
@@ -234,6 +242,8 @@ func main() {
 	fmt.Printf("Notify:  %s/api/v1/notifications\n", base)
 	fmt.Printf("SvcMap:  %s/api/v1/servicemap\n", base)
 	fmt.Printf("SLOs:    %s/api/v1/slos\n", base)
+	fmt.Printf("Pipeline:%s/api/v1/pipeline/rules\n", base)
+	fmt.Printf("Export:  %s/api/v1/export/metrics  (also /logs /traces)\n", base)
 	fmt.Printf("Scrape:  %s/metrics  (Prometheus scrape endpoint)\n", base)
 	fmt.Printf("Prom:    %s/api/v1/metrics/prometheus  (Prometheus push)\n", base)
 	fmt.Printf("Panels:  http://localhost:%d/api/v1/dashboard/panels\n", cfg.Server.DashboardPort)
