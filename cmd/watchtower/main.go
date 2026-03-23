@@ -21,9 +21,11 @@ import (
 	"github.com/apaqa/watchtower/internal/notify"
 	"github.com/apaqa/watchtower/internal/pipeline"
 	"github.com/apaqa/watchtower/internal/probe"
+	"github.com/apaqa/watchtower/internal/procmon"
 	"github.com/apaqa/watchtower/internal/registry"
 	"github.com/apaqa/watchtower/internal/servicemap"
 	"github.com/apaqa/watchtower/internal/slo"
+	"github.com/apaqa/watchtower/internal/statuspage"
 	"github.com/apaqa/watchtower/internal/tracestore"
 	"github.com/apaqa/watchtower/internal/tsdb"
 )
@@ -107,13 +109,16 @@ func main() {
 	traceStore := tracestore.New()
 	defer traceStore.Stop()
 
-	// ── 5d. Initialize service map builder, SLO store, pipeline, and export handler ──
+	// ── 5d. Initialize service map builder, SLO store, pipeline, export, process monitor ──
 	svcMapBuilder := servicemap.NewBuilder(traceStore)
 	sloStore := slo.NewStore(db)
 	aggPipeline := pipeline.New(db)
 	aggPipeline.Start()
 	defer aggPipeline.Stop()
 	exportHandler := export.New(db, logStore, traceStore)
+	procMonitor := procmon.New(db)
+	procMonitor.Start()
+	defer procMonitor.Stop()
 
 	// ── 4b. Initialize API key store and pre-load keys from config ───────────
 	keyStore := auth.NewKeyStore()
@@ -160,6 +165,7 @@ func main() {
 		}
 	}
 	defer probeMgr.Stop()
+	statusPage := statuspage.New(probeMgr, sloStore, alertEng)
 
 	// ── 7. Start ingest server (metrics + WQL + alerts + logs + probes + traces) ──
 	ingestSrv, err := ingest.New(cfg.IngestAddr(), db)
@@ -177,6 +183,8 @@ func main() {
 	ingestSrv.RegisterSLOStore(sloStore)
 	ingestSrv.RegisterPipeline(aggPipeline)
 	ingestSrv.RegisterExportHandler(exportHandler)
+	ingestSrv.RegisterProcessMonitor(procMonitor)
+	ingestSrv.RegisterStatusPage(statusPage)
 	ingestSrv.RegisterKeyStore(keyStore)
 	go func() {
 		if err := ingestSrv.Start(); err != nil {
@@ -244,6 +252,8 @@ func main() {
 	fmt.Printf("SLOs:    %s/api/v1/slos\n", base)
 	fmt.Printf("Pipeline:%s/api/v1/pipeline/rules\n", base)
 	fmt.Printf("Export:  %s/api/v1/export/metrics  (also /logs /traces)\n", base)
+	fmt.Printf("Procs:   %s/api/v1/processes\n", base)
+	fmt.Printf("Status:  %s/status\n", base)
 	fmt.Printf("Scrape:  %s/metrics  (Prometheus scrape endpoint)\n", base)
 	fmt.Printf("Prom:    %s/api/v1/metrics/prometheus  (Prometheus push)\n", base)
 	fmt.Printf("Panels:  http://localhost:%d/api/v1/dashboard/panels\n", cfg.Server.DashboardPort)

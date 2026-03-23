@@ -1099,6 +1099,7 @@
   <button class="tab-btn" data-tab="traces">Traces</button>
   <button class="tab-btn" data-tab="agents">Agents</button>
   <button class="tab-btn" data-tab="servicemap">Service Map</button>
+  <button class="tab-btn" data-tab="processes">Processes</button>
 </nav>
 
 <!-- ── Metrics tab ──────────────────────────────────────────────────────── -->
@@ -1464,6 +1465,41 @@
       <span><span class="legend-dot" style="background:#bc8cff"></span>Queue</span>
       <span><span class="legend-dot" style="background:#8b949e"></span>External</span>
       <span style="margin-left:8px"><span class="legend-dot" style="background:transparent;border:2px solid #f85149;width:8px;height:8px"></span> Error rate &gt;5%</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Processes tab ─────────────────────────────────────────────────────── -->
+<div id="tab-processes" class="tab-panel">
+  <div class="log-panel">
+    <div class="panel-title">
+      Process Monitor
+      <span id="proc-count" style="color:var(--muted);font-size:0.8rem;font-weight:400;margin-left:0.5rem"></span>
+    </div>
+    <div class="log-toolbar">
+      <input id="proc-search" type="text" placeholder="Filter by process name…" />
+      <select id="proc-sort">
+        <option value="cpu">Sort: CPU%</option>
+        <option value="memory">Sort: Memory</option>
+      </select>
+    </div>
+    <div class="log-table-wrap">
+      <table id="proc-table" style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr>
+            <th style="cursor:pointer" onclick="sortProcs('pid')">PID</th>
+            <th style="cursor:pointer" onclick="sortProcs('name')">Name</th>
+            <th style="cursor:pointer;text-align:right" onclick="sortProcs('cpu')">CPU%</th>
+            <th style="cursor:pointer;text-align:right" onclick="sortProcs('memory')">Mem MB</th>
+            <th style="cursor:pointer;text-align:right" onclick="sortProcs('memPct')">Mem%</th>
+            <th>Status</th>
+            <th>User</th>
+          </tr>
+        </thead>
+        <tbody id="proc-tbody">
+          <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:1rem">Loading…</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -2994,8 +3030,82 @@ document.getElementById('slo-modal-submit').addEventListener('click', async () =
 fetchSLOs();
 setInterval(fetchSLOs, 30000);
 
-// ── 聚合规则管理 ──────────────────────────────────────────────────────────────
+// ── 进程监控 ──────────────────────────────────────────────────────────────────
 const INGEST_BASE = 'http://localhost:9090';
+
+let allProcs = [];       // 当前全部进程快照
+let procSortKey = 'cpu'; // 当前排序键
+let procSortAsc = false; // 升序/降序
+
+async function fetchProcesses() {
+  try {
+    const sort = document.getElementById('proc-sort').value;
+    const res = await fetch(INGEST_BASE + '/api/v1/processes?sort=' + sort);
+    allProcs = await res.json() || [];
+    renderProcs();
+  } catch(e) { console.warn('process fetch error:', e); }
+}
+
+function renderProcs() {
+  const filter = (document.getElementById('proc-search').value || '').toLowerCase();
+  let procs = allProcs.filter(p => !filter || p.name.toLowerCase().includes(filter));
+
+  // 列排序
+  procs = [...procs].sort((a, b) => {
+    let av, bv;
+    switch(procSortKey) {
+      case 'pid':    av = a.pid;            bv = b.pid; break;
+      case 'name':   av = a.name;           bv = b.name; break;
+      case 'memory': av = a.memory_mb;      bv = b.memory_mb; break;
+      case 'memPct': av = a.memory_percent; bv = b.memory_percent; break;
+      default:       av = a.cpu_percent;    bv = b.cpu_percent; break;
+    }
+    if (typeof av === 'string') return procSortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+    return procSortAsc ? av - bv : bv - av;
+  });
+
+  const tbody = document.getElementById('proc-tbody');
+  if (procs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:1rem">No processes found</td></tr>';
+    return;
+  }
+  tbody.innerHTML = procs.map(p => {
+    const highCPU = p.cpu_percent > 50;
+    const highMem = p.memory_mb > 1024;
+    const rowStyle = (highCPU || highMem) ? 'background:rgba(248,81,73,0.08)' : '';
+    const cpuStyle = highCPU ? 'color:var(--red);font-weight:600' : '';
+    const memStyle = highMem ? 'color:var(--red);font-weight:600' : '';
+    return `<tr style="${rowStyle}">
+      <td style="color:var(--muted);font-size:0.82rem">${p.pid}</td>
+      <td><strong>${p.name}</strong></td>
+      <td style="text-align:right;${cpuStyle}">${p.cpu_percent.toFixed(1)}</td>
+      <td style="text-align:right;${memStyle}">${p.memory_mb.toFixed(1)}</td>
+      <td style="text-align:right;color:var(--muted)">${p.memory_percent.toFixed(1)}</td>
+      <td><span style="font-size:0.78rem;color:${p.status==='running'?'var(--green)':'var(--muted)'}">${p.status}</span></td>
+      <td style="color:var(--muted);font-size:0.82rem">${p.user||'—'}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('proc-count').textContent = `(${procs.length} shown)`;
+}
+
+function sortProcs(key) {
+  if (procSortKey === key) { procSortAsc = !procSortAsc; }
+  else { procSortKey = key; procSortAsc = key === 'name' || key === 'pid'; }
+  renderProcs();
+}
+
+document.getElementById('proc-search').addEventListener('input', renderProcs);
+document.getElementById('proc-sort').addEventListener('change', fetchProcesses);
+
+// 切换到 Processes tab 时立即刷新
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  if (btn.dataset.tab === 'processes') btn.addEventListener('click', fetchProcesses);
+});
+
+fetchProcesses();
+setInterval(fetchProcesses, 10000);
+
+// ── 聚合规则管理 ──────────────────────────────────────────────────────────────
 
 async function fetchPipelineRules() {
   try {

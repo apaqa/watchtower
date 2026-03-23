@@ -127,6 +127,21 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - `POST /api/v1/slos` creates an SLO; `DELETE /api/v1/slos/{name}` removes it
 - Dashboard **SLO Status** section in Metrics tab: progress bar per SLO (green/yellow/red), "+ Add SLO" modal
 
+### Process Monitoring
+- Collects the top 20 processes by CPU usage every 10 seconds via `gopsutil/v3/process`
+- Per-process data: PID, name, CPU%, memory (MB + %), status (running/sleeping/zombie), start time, command line, username
+- Writes `process_cpu{name=…,pid=…}` and `process_memory_mb{name=…,pid=…}` to TSDB for alerting and WQL queries
+- `GET /api/v1/processes` returns current snapshot sorted by CPU; `?sort=memory` sorts by memory instead
+
+### Status Page
+- Public-facing status page at `GET /status` — no API key required
+- Shows overall system status: **Operational** (all probes up) · **Degraded** (some down) · **Down** (all down)
+- Lists all monitored endpoints with current status, uptime %, and response time
+- Lists all SLOs with current SLI vs. target
+- Shows last 10 alert firing/resolved events as an incident history
+- Clean, minimal dark-theme HTML design (separate from the main dashboard)
+- `GET /status/badge` returns an SVG badge for embedding in READMEs or external dashboards
+
 ### Metrics Aggregation Pipeline
 - Define rules to continuously aggregate raw metrics into new derived series
 - Each rule specifies: input metric, output metric, aggregation function, time window, and optional `group_by` label keys
@@ -164,9 +179,10 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 ### Dashboard
 - Dark-theme single-page app served at `:8080`
 - Live Chart.js line charts via WebSocket push (5-second interval)
-- **Seven tabs**: **Metrics** · **Logs** · **Alerts** · **Endpoints** · **Traces** · **Agents** · **Service Map**
+- **Eight tabs**: **Metrics** · **Logs** · **Alerts** · **Endpoints** · **Traces** · **Agents** · **Service Map** · **Processes**
 - **Aggregation Rules** section in Metrics tab: list active rules, "+ Add Rule" modal, delete rules
 - **Export buttons** on Metrics and Logs tabs: one-click CSV/JSON download for the current dataset
+- **Processes tab**: live process table with CPU/Memory columns; clickable column headers for client-side sorting; search filter bar; red highlight for high-CPU (>50%) or high-memory (>1GB) processes; auto-refreshes every 10 seconds
 - WQL query box with instant results
 - Log viewer with full-text/regex search and level filter
 - Alert manager with rule creation modal and state history
@@ -220,6 +236,9 @@ go build -o watchtower ./cmd/watchtower
 | Custom Panels API | http://localhost:8080/api/v1/dashboard/panels |
 | Pipeline API | http://localhost:9090/api/v1/pipeline/rules |
 | Export API | http://localhost:9090/api/v1/export/metrics |
+| Process API | http://localhost:9090/api/v1/processes |
+| Status Page | http://localhost:9090/status |
+| Status Badge | http://localhost:9090/status/badge |
 
 ## Configuration
 
@@ -766,6 +785,35 @@ Response entry:
 
 The WQL query must return a 0–100 value representing the SLI percentage. Windows: `1d`, `7d`, `30d`.
 
+### Process Monitor
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/processes` | List top 20 processes by CPU (add `?sort=memory` for memory order) |
+
+```bash
+# Top processes by CPU
+curl http://localhost:9090/api/v1/processes
+
+# Top processes by memory
+curl "http://localhost:9090/api/v1/processes?sort=memory"
+```
+
+### Status Page
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/status` | Public HTML status page (no auth required) |
+| `GET` | `/status/badge` | SVG badge: green=operational, yellow=degraded, red=down |
+
+```bash
+# View status page
+curl http://localhost:9090/status
+
+# Get SVG badge (embed in a README with ![status](http://localhost:9090/status/badge))
+curl http://localhost:9090/status/badge
+```
+
 ### Aggregation Pipeline
 
 | Method | Path | Description |
@@ -921,7 +969,7 @@ watchtower/
 ## Running Tests
 
 ```bash
-go test ./...                        # all packages (~234 tests)
+go test ./...                        # all packages (~257 tests)
 go test ./internal/auth/...          # auth middleware + key management (19 tests)
 go test ./internal/ingest/...        # ingest server + Prometheus parser (12 new)
 go test ./internal/registry/...      # agent registry + API (15 tests)

@@ -17,9 +17,11 @@ import (
 	"github.com/apaqa/watchtower/internal/notify"
 	"github.com/apaqa/watchtower/internal/pipeline"
 	"github.com/apaqa/watchtower/internal/probe"
+	"github.com/apaqa/watchtower/internal/procmon"
 	"github.com/apaqa/watchtower/internal/registry"
 	"github.com/apaqa/watchtower/internal/servicemap"
 	"github.com/apaqa/watchtower/internal/slo"
+	"github.com/apaqa/watchtower/internal/statuspage"
 	"github.com/apaqa/watchtower/internal/tracestore"
 	"github.com/apaqa/watchtower/internal/tsdb"
 	"github.com/apaqa/watchtower/internal/wql"
@@ -124,6 +126,16 @@ func (s *Server) RegisterPipeline(p *pipeline.Pipeline) {
 // RegisterExportHandler 注册数据导出 API 路由（必须在 Start 之前调用）
 func (s *Server) RegisterExportHandler(h *export.Handler) {
 	export.RegisterRoutes(s.mux, h)
+}
+
+// RegisterProcessMonitor 注册进程监控 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterProcessMonitor(m *procmon.Monitor) {
+	procmon.RegisterRoutes(s.mux, m)
+}
+
+// RegisterStatusPage 注册状态页路由（/status 和 /status/badge，无需认证）
+func (s *Server) RegisterStatusPage(h *statuspage.Handler) {
+	statuspage.RegisterRoutes(s.mux, h)
 }
 
 // RegisterLogStore 注入日志存储并注册日志 API 路由（必须在 Start 之前调用）
