@@ -1,6 +1,6 @@
 # WatchTower
 
-A lightweight, self-contained monitoring platform written in Go. A single binary collects system metrics, stores time-series data, evaluates alert rules, tails logs, and probes HTTP endpoints — all without external databases or message queues.
+A lightweight, self-contained monitoring platform written in Go. A single binary collects system metrics, stores time-series data, evaluates alert rules, tails logs, probes HTTP endpoints, and records distributed traces — all without external databases or message queues.
 
 ## Architecture
 
@@ -14,8 +14,8 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 │  │(gopsutil) │                        │  Alert API            │   │
 │  └───────────┘                        │  Log API              │   │
 │                                       │  Probe API            │   │
-│  ┌───────────┐  POST /api/v1/logs     └──────────┬───────────┘   │
-│  │  Log      │ ─────────────────────────────────▶│               │
+│  ┌───────────┐  POST /api/v1/logs     │  Trace API            │   │
+│  │  Log      │ ─────────────────────▶ └──────────┬───────────┘   │
 │  │  Agent    │                                    │ Write / Query │
 │  └───────────┘                                    ▼               │
 │                                        ┌────────────────────┐    │
@@ -24,10 +24,18 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 │  │  Probes   │                        │   Persistence       │    │
 │  └───────────┘                        └─────────┬──────────┘    │
 │                                                  │ Query          │
+│  ┌───────────┐  POST /api/v1/traces              ▼                │
+│  │  Trace    │ ─────────────────────▶ ┌────────────────────┐    │
+│  │  Agent    │                        │  Trace Store       │    │
+│  └───────────┘                        │  (max 1000 traces, │    │
+│                                        │   1-hour retention)│    │
+│                                        └─────────┬──────────┘    │
+│                                                  │ REST API       │
 │                                                  ▼                │
 │                                   ┌──────────────────────────┐   │
 │  Browser ◀─── WebSocket ────────  │   Dashboard  :8080       │   │
-│           ◀─── HTML / JS ────────  │   Chart.js + WQL + Logs  │   │
+│           ◀─── HTML / JS ────────  │   Metrics/Logs/Alerts/  │   │
+│                                   │   Endpoints/Traces tabs  │   │
 │                                   └──────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -71,14 +79,23 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - Stores last 100 results per probe; calculates uptime percentage
 - Runtime add/remove via REST API
 
+### Distributed Tracing
+- In-memory trace store: up to 1 000 traces, 1-hour retention, ring-buffer eviction
+- Thread-safe with separate index by `trace_id` and by `service_name`
+- Ingestion accepts any batch of spans; spans with the same `trace_id` are merged into one trace
+- `Trace` computed metadata: `start_time`, `duration_ms`, `service_names`, `has_error`
+- Trace agent generates synthetic 4-span traces every 10 seconds simulating a real API call chain
+- 20% chance of error spans for realistic error-rate simulation
+
 ### Dashboard
 - Dark-theme single-page app served at `:8080`
 - Live Chart.js line charts via WebSocket push (5-second interval)
-- Four tabs: **Metrics** · **Logs** · **Alerts** · **Endpoints**
+- Five tabs: **Metrics** · **Logs** · **Alerts** · **Endpoints** · **Traces**
 - WQL query box with instant results
 - Log viewer with full-text/regex search and level filter
 - Alert manager with rule creation modal and state history
 - Endpoint cards with status badge, response time, uptime %, sparkline chart, and 20-check status dots
+- Trace list with service filter and min-duration filter; click any trace to expand a proportional **waterfall diagram** showing each span as a horizontal bar colored green (ok) or red (error), indented by parent–child depth
 
 ### YAML Configuration
 - `watchtower.yaml` at project root controls all ports, intervals, and pre-loaded rules/probes
@@ -114,6 +131,7 @@ go build -o watchtower ./cmd/watchtower
 | Alert API | http://localhost:9090/api/v1/alerts |
 | Log API | http://localhost:9090/api/v1/logs |
 | Probe API | http://localhost:9090/api/v1/probes |
+| Trace API | http://localhost:9090/api/v1/traces |
 
 ## Configuration
 
@@ -338,6 +356,51 @@ Probe status response:
 }
 ```
 
+### Traces
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/traces` | Ingest a batch of spans (JSON array); spans sharing `trace_id` are merged |
+| `GET`  | `/api/v1/traces` | List trace summaries (`service`, `limit`, `min_duration` filters) |
+| `GET`  | `/api/v1/traces/{trace_id}` | Get the full trace with all spans |
+
+```bash
+# Ingest spans
+curl -X POST http://localhost:9090/api/v1/traces \
+  -H "Content-Type: application/json" \
+  -d '[
+    {"trace_id":"abc123","span_id":"root","operation_name":"HTTP GET /api","service_name":"gateway",
+     "start_time":1711000000000,"duration_ms":120,"status":"ok"},
+    {"trace_id":"abc123","span_id":"db01","parent_span_id":"root","operation_name":"db.query",
+     "service_name":"user-service","start_time":1711000000010,"duration_ms":80,"status":"ok"}
+  ]'
+
+# List recent traces (filter to a specific service, min 50ms)
+curl "http://localhost:9090/api/v1/traces?service=gateway&min_duration=50&limit=20"
+
+# Get full trace
+curl "http://localhost:9090/api/v1/traces/abc123"
+```
+
+Span schema:
+
+```json
+{
+  "trace_id":       "abc123",
+  "span_id":        "root",
+  "parent_span_id": "",
+  "operation_name": "HTTP GET /api/users",
+  "service_name":   "api-gateway",
+  "start_time":     1711000000000,
+  "duration_ms":    120,
+  "status":         "ok",
+  "tags":           {"http.method": "GET"},
+  "logs":           [{"timestamp": 1711000000050, "message": "cache miss"}]
+}
+```
+
+`status` is `"ok"` or `"error"`. `parent_span_id` is omitted (or empty string) for root spans.
+
 ### WebSocket `/ws`
 
 Connected clients receive a push every 5 seconds:
@@ -369,6 +432,7 @@ watchtower/
 │   ├── agent/
 │   │   ├── agent.go             # System metrics agent (gopsutil)
 │   │   ├── log_agent.go         # Log agent (synthetic system events)
+│   │   ├── trace_agent.go       # Trace agent (synthetic 4-span traces, 20% error rate)
 │   │   └── agent_test.go
 │   ├── tsdb/
 │   │   ├── tsdb.go              # In-memory time-series database
@@ -397,6 +461,10 @@ watchtower/
 │   │   ├── probe.go             # ProbeManager, per-probe goroutines, TSDB write
 │   │   ├── api.go               # Probe HTTP API
 │   │   └── probe_test.go
+│   ├── tracestore/
+│   │   ├── store.go             # In-memory trace store, ring-buffer eviction, 1h retention
+│   │   ├── api.go               # Trace HTTP API (ingest, list, get)
+│   │   └── store_test.go
 │   ├── ingest/
 │   │   ├── server.go            # Ingest HTTP server
 │   │   ├── server_test.go
@@ -408,6 +476,7 @@ watchtower/
 │   └── model/
 │       ├── metric.go            # MetricPoint type + fingerprint
 │       ├── log.go               # LogEntry, LogLevel types
+│       ├── trace.go             # Span, Trace, TraceSummary, SpanLog types
 │       └── metric_test.go
 ├── watchtower.yaml              # Example configuration
 └── watchtower-data/
@@ -417,13 +486,14 @@ watchtower/
 ## Running Tests
 
 ```bash
-go test ./...                      # all packages (~112 tests)
-go test ./internal/config/...      # config loading (8 tests)
-go test ./internal/probe/...       # endpoint probing (13 tests)
-go test ./internal/logstore/...    # log store
-go test ./internal/alert/...       # alert engine
-go test ./internal/wql/...         # WQL language
-go test ./internal/tsdb/...        # TSDB + persistence
+go test ./...                        # all packages (~125 tests)
+go test ./internal/tracestore/...    # trace store + API (12 tests)
+go test ./internal/config/...        # config loading (8 tests)
+go test ./internal/probe/...         # endpoint probing (13 tests)
+go test ./internal/logstore/...      # log store
+go test ./internal/alert/...         # alert engine
+go test ./internal/wql/...           # WQL language
+go test ./internal/tsdb/...          # TSDB + persistence
 ```
 
 ## Tech Stack
@@ -434,6 +504,7 @@ go test ./internal/tsdb/...        # TSDB + persistence
 | System metrics | [gopsutil/v3](https://github.com/shirou/gopsutil) |
 | WebSocket | [gorilla/websocket](https://github.com/gorilla/websocket) |
 | YAML config | [gopkg.in/yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3) |
+| Distributed tracing | Custom span/trace model; waterfall diagram in browser |
 | Frontend charts | [Chart.js 4](https://www.chartjs.org/) |
 | Query language | WQL (custom, PromQL-inspired) |
 | Storage | In-memory TSDB + Gorilla compressed chunks (no external dependencies) |

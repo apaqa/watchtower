@@ -584,6 +584,165 @@
     /* Add probe modal */
     #probe-modal .modal { width: min(480px, 95vw); }
 
+    /* ── Traces tab ── */
+    #tab-traces { padding: 24px; }
+    .trace-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .trace-panel-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .trace-toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    #trace-service-filter, #trace-min-dur {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 10px;
+      color: var(--text);
+      font-size: 0.85rem;
+      outline: none;
+    }
+    #trace-service-filter:focus, #trace-min-dur:focus { border-color: var(--accent); }
+    #trace-min-dur { width: 160px; }
+    #trace-refresh-btn {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: color 0.15s;
+    }
+    #trace-refresh-btn:hover { color: var(--text); }
+
+    /* Trace list */
+    .trace-list { display: flex; flex-direction: column; gap: 6px; }
+    .trace-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .trace-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.1s;
+    }
+    .trace-header:hover { background: rgba(48,54,61,0.4); }
+    .trace-status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .trace-ok   { background: var(--green); }
+    .trace-err  { background: var(--red); }
+    .trace-root-op { font-weight: 600; font-size: 0.9rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .trace-svcs { font-size: 0.78rem; color: var(--purple); white-space: nowrap; }
+    .trace-dur  { font-size: 0.82rem; color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .trace-spans-count { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+    .trace-ts   { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+    .trace-chevron { font-size: 0.7rem; color: var(--muted); transition: transform 0.2s; }
+    .trace-item.expanded .trace-chevron { transform: rotate(90deg); }
+
+    /* Waterfall diagram */
+    .trace-waterfall {
+      display: none;
+      border-top: 1px solid var(--border);
+      padding: 12px 14px;
+      overflow-x: auto;
+    }
+    .trace-item.expanded .trace-waterfall { display: block; }
+    .wf-row {
+      display: flex;
+      align-items: center;
+      height: 26px;
+      gap: 0;
+    }
+    .wf-row:hover { background: rgba(48,54,61,0.25); border-radius: 4px; }
+    .wf-label {
+      flex-shrink: 0;
+      width: 38%;
+      min-width: 200px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding-right: 10px;
+      overflow: hidden;
+    }
+    .wf-service-tag {
+      font-size: 0.68rem;
+      padding: 1px 6px;
+      border-radius: 3px;
+      background: rgba(88,166,255,0.15);
+      color: var(--accent);
+      border: 1px solid rgba(88,166,255,0.25);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .wf-op-name {
+      font-size: 0.8rem;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .wf-track {
+      flex: 1;
+      position: relative;
+      height: 18px;
+      background: rgba(48,54,61,0.3);
+      border-radius: 3px;
+      overflow: visible;
+    }
+    .wf-bar {
+      position: absolute;
+      height: 100%;
+      border-radius: 3px;
+      min-width: 3px;
+      cursor: default;
+      transition: opacity 0.1s;
+    }
+    .wf-bar:hover { opacity: 0.8; }
+    .wf-bar-ok    { background: var(--green); }
+    .wf-bar-error { background: var(--red); }
+    .wf-bar-label {
+      position: absolute;
+      right: -4px;
+      top: 50%;
+      transform: translateY(-50%) translateX(100%);
+      font-size: 0.7rem;
+      color: var(--muted);
+      white-space: nowrap;
+      padding-left: 4px;
+    }
+    #trace-empty {
+      color: var(--muted);
+      font-size: 0.88rem;
+      padding: 20px 0;
+    }
+
     /* ── Footer ── */
     footer {
       text-align: center;
@@ -609,6 +768,7 @@
   <button class="tab-btn" data-tab="logs">Logs</button>
   <button class="tab-btn" data-tab="alerts">Alerts</button>
   <button class="tab-btn" data-tab="uptime">Endpoints</button>
+  <button class="tab-btn" data-tab="traces">Traces</button>
 </nav>
 
 <!-- ── Metrics tab ──────────────────────────────────────────────────────── -->
@@ -841,6 +1001,26 @@
     <div class="modal-actions">
       <button class="btn-secondary" id="modal-cancel">Cancel</button>
       <button class="btn-primary" id="modal-submit">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Traces tab ─────────────────────────────────────────────────────────── -->
+<div id="tab-traces" class="tab-panel">
+  <div class="trace-panel">
+    <div class="trace-panel-title">
+      Distributed Traces
+      <span id="trace-summary" style="font-size:0.8rem;font-weight:400;color:var(--muted)"></span>
+    </div>
+    <div class="trace-toolbar">
+      <select id="trace-service-filter">
+        <option value="">All Services</option>
+      </select>
+      <input id="trace-min-dur" type="number" min="0" placeholder="Min duration (ms)" />
+      <button id="trace-refresh-btn">↻ Refresh</button>
+    </div>
+    <div class="trace-list" id="trace-list">
+      <div id="trace-empty">No traces recorded yet</div>
     </div>
   </div>
 </div>
@@ -1475,6 +1655,198 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // Initial load + refresh every 30 seconds
 fetchProbes();
 setInterval(fetchProbes, 30000);
+
+// ── Distributed traces logic ───────────────────────────────────────────────
+const TRACES_API = 'http://localhost:9090/api/v1/traces';
+
+// knownServices accumulates all service names seen so far (for filter dropdown)
+const knownServices = new Set();
+
+// fetchTraces fetches the trace list with current filter values and renders it
+async function fetchTraces() {
+  const service = document.getElementById('trace-service-filter').value;
+  const minDur  = document.getElementById('trace-min-dur').value;
+  let url = TRACES_API + '?limit=50';
+  if (service)  url += '&service='      + encodeURIComponent(service);
+  if (minDur)   url += '&min_duration=' + encodeURIComponent(minDur);
+
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return;
+    const traces = await resp.json();
+    renderTraceList(traces || []);
+  } catch(e) {
+    // trace API may not be ready yet
+  }
+}
+
+// renderTraceList renders the full trace summary list
+function renderTraceList(traces) {
+  const container = document.getElementById('trace-list');
+  const emptyEl   = document.getElementById('trace-empty');
+  const summary   = document.getElementById('trace-summary');
+
+  if (!traces || traces.length === 0) {
+    if (emptyEl) emptyEl.style.display = 'block';
+    if (summary) summary.textContent = '';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  const errCount = traces.filter(t => t.has_error).length;
+  if (summary) summary.textContent = `${traces.length} traces — ${errCount} with errors`;
+
+  // Collect service names for the filter dropdown
+  traces.forEach(t => (t.service_names || []).forEach(s => knownServices.add(s)));
+  updateServiceDropdown();
+
+  // Build HTML for all trace rows; preserve expanded state
+  const expandedIds = new Set(
+    [...container.querySelectorAll('.trace-item.expanded')].map(el => el.dataset.traceId)
+  );
+
+  container.innerHTML = '';
+  if (emptyEl) container.appendChild(emptyEl);
+
+  traces.forEach(t => {
+    const item = document.createElement('div');
+    item.className = 'trace-item' + (expandedIds.has(t.trace_id) ? ' expanded' : '');
+    item.dataset.traceId = t.trace_id;
+
+    const ts = new Date(t.start_time).toLocaleTimeString('en-US', {hour12: false});
+    const svcs = (t.service_names || []).join(', ');
+    const dotCls = t.has_error ? 'trace-err' : 'trace-ok';
+
+    item.innerHTML = `
+      <div class="trace-header">
+        <span class="trace-status-dot ${dotCls}"></span>
+        <span class="trace-root-op" title="${escapeHtml(t.root_operation)}">${escapeHtml(t.root_operation || '—')}</span>
+        <span class="trace-svcs">${escapeHtml(svcs)}</span>
+        <span class="trace-dur">${t.duration_ms}ms</span>
+        <span class="trace-spans-count">${t.span_count} span${t.span_count !== 1 ? 's' : ''}</span>
+        <span class="trace-ts">${ts}</span>
+        <span class="trace-chevron">▶</span>
+      </div>
+      <div class="trace-waterfall" id="wf-${escapeHtml(t.trace_id)}"></div>`;
+
+    item.querySelector('.trace-header').addEventListener('click', () => toggleTrace(item, t.trace_id));
+    container.appendChild(item);
+
+    // Re-expand if it was open before
+    if (expandedIds.has(t.trace_id)) {
+      loadWaterfall(item, t.trace_id);
+    }
+  });
+}
+
+// toggleTrace expands or collapses a trace row, fetching full spans on first open
+function toggleTrace(item, traceId) {
+  const wasExpanded = item.classList.contains('expanded');
+  item.classList.toggle('expanded');
+  if (!wasExpanded) {
+    loadWaterfall(item, traceId);
+  }
+}
+
+// loadWaterfall fetches the full trace and renders the waterfall diagram
+async function loadWaterfall(item, traceId) {
+  const wfEl = document.getElementById('wf-' + traceId);
+  if (!wfEl || wfEl.dataset.loaded === 'true') return;
+
+  wfEl.innerHTML = '<span style="color:var(--muted);font-size:0.8rem;padding:4px 0;display:block">Loading…</span>';
+
+  try {
+    const resp = await fetch(TRACES_API + '/' + encodeURIComponent(traceId));
+    if (!resp.ok) {
+      wfEl.innerHTML = '<span style="color:var(--red);font-size:0.8rem">Failed to load trace</span>';
+      return;
+    }
+    const trace = await resp.json();
+    renderWaterfall(wfEl, trace);
+    wfEl.dataset.loaded = 'true';
+  } catch(e) {
+    wfEl.innerHTML = '<span style="color:var(--red);font-size:0.8rem">Error: ' + escapeHtml(String(e)) + '</span>';
+  }
+}
+
+// renderWaterfall builds the span waterfall diagram inside wfEl
+function renderWaterfall(wfEl, trace) {
+  const spans = trace.spans || [];
+  if (spans.length === 0) { wfEl.textContent = 'No spans'; return; }
+
+  const traceStart = trace.start_time;
+  const traceDur   = trace.duration_ms || 1; // avoid division by zero
+
+  // Build span depth map via parent–child relationships
+  const spanMap = {};
+  spans.forEach(sp => { spanMap[sp.span_id] = sp; });
+
+  const depthMap = {};
+  function getDepth(sp) {
+    if (depthMap[sp.span_id] !== undefined) return depthMap[sp.span_id];
+    if (!sp.parent_span_id || !spanMap[sp.parent_span_id]) {
+      depthMap[sp.span_id] = 0;
+      return 0;
+    }
+    const d = getDepth(spanMap[sp.parent_span_id]) + 1;
+    depthMap[sp.span_id] = d;
+    return d;
+  }
+  spans.forEach(sp => getDepth(sp));
+
+  let html = '';
+  spans.forEach(sp => {
+    const depth  = depthMap[sp.span_id] || 0;
+    const left   = Math.max(0, ((sp.start_time - traceStart) / traceDur) * 100);
+    const width  = Math.min(100 - left, Math.max(0.3, (sp.duration_ms / traceDur) * 100));
+    const barCls = sp.status === 'error' ? 'wf-bar-error' : 'wf-bar-ok';
+    const indent = depth * 16;
+    const title  = `${escapeHtml(sp.operation_name)} [${sp.service_name}] ${sp.duration_ms}ms — ${sp.status}`;
+
+    html += `<div class="wf-row">
+      <div class="wf-label" style="padding-left:${indent}px">
+        <span class="wf-service-tag">${escapeHtml(sp.service_name)}</span>
+        <span class="wf-op-name" title="${title}">${escapeHtml(sp.operation_name)}</span>
+      </div>
+      <div class="wf-track">
+        <div class="wf-bar ${barCls}"
+             style="left:${left.toFixed(2)}%;width:${width.toFixed(2)}%"
+             title="${title}">
+          <span class="wf-bar-label">${sp.duration_ms}ms</span>
+        </div>
+      </div>
+    </div>`;
+  });
+  wfEl.innerHTML = html;
+}
+
+// updateServiceDropdown populates the service filter with all known services
+function updateServiceDropdown() {
+  const sel = document.getElementById('trace-service-filter');
+  const cur = sel.value;
+  // Keep only the "All Services" option then re-add known services
+  while (sel.options.length > 1) sel.remove(1);
+  [...knownServices].sort().forEach(svc => {
+    const opt = document.createElement('option');
+    opt.value = svc;
+    opt.textContent = svc;
+    sel.appendChild(opt);
+  });
+  sel.value = cur; // restore previous selection
+}
+
+document.getElementById('trace-refresh-btn').addEventListener('click', fetchTraces);
+document.getElementById('trace-service-filter').addEventListener('change', fetchTraces);
+document.getElementById('trace-min-dur').addEventListener('change', fetchTraces);
+
+// Refresh when switching to the Traces tab
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  if (btn.dataset.tab === 'traces') btn.addEventListener('click', fetchTraces);
+});
+
+// Initial load + refresh every 30 seconds
+fetchTraces();
+setInterval(fetchTraces, 30000);
 </script>
 </body>
 </html>

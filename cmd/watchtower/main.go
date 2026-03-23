@@ -1,5 +1,6 @@
-// WatchTower 监控平台入口
-// 在单个二进制文件中同时启动摄入服务、仪表板服务、采集代理和探针管理器
+// WatchTower monitoring platform entry point.
+// A single binary starts the ingest API, dashboard, system agent, log agent,
+// trace agent, endpoint probe manager, and alert engine.
 package main
 
 import (
@@ -16,28 +17,29 @@ import (
 	"github.com/apaqa/watchtower/internal/ingest"
 	"github.com/apaqa/watchtower/internal/logstore"
 	"github.com/apaqa/watchtower/internal/probe"
+	"github.com/apaqa/watchtower/internal/tracestore"
 	"github.com/apaqa/watchtower/internal/tsdb"
 )
 
 func main() {
-	// ── 1. 加载配置文件（不存在时使用默认值）─────────────────────────────────
+	// ── 1. Load configuration (use defaults when file is missing) ─────────────
 	cfg, err := config.Load("watchtower.yaml")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "配置文件加载失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("配置已加载 — 摄入端口: %d，仪表板端口: %d，端点探针: %d 个\n",
+	fmt.Printf("config loaded — ingest port: %d, dashboard port: %d, endpoint probes: %d\n",
 		cfg.Server.IngestPort, cfg.Server.DashboardPort, len(cfg.Endpoints))
 
-	// ── 2. 初始化时间序列数据库（带磁盘持久化）──────────────────────────────
+	// ── 2. Initialize TSDB with disk persistence ──────────────────────────────
 	db, err := tsdb.NewWithStorage("watchtower-data")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "TSDB 初始化失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "TSDB init failed: %v\n", err)
 		os.Exit(1)
 	}
 	defer db.Stop()
 
-	// ── 3. 初始化告警引擎，并预加载配置文件中定义的规则 ──────────────────────
+	// ── 3. Initialize alert engine and pre-load rules from config ─────────────
 	alertEng := alert.NewEngine(db)
 	for _, ac := range cfg.Alerts {
 		if err := alertEng.AddRule(alert.AlertRule{
@@ -49,17 +51,21 @@ func main() {
 			Severity:   ac.Severity,
 			WebhookURL: ac.WebhookURL,
 		}); err != nil {
-			fmt.Fprintf(os.Stderr, "加载告警规则 %q 失败: %v\n", ac.Name, err)
+			fmt.Fprintf(os.Stderr, "failed to load alert rule %q: %v\n", ac.Name, err)
 		}
 	}
 	alertEng.Start()
 	defer alertEng.Stop()
 
-	// ── 4. 初始化日志存储 ───────────────────────────────────────────────────
+	// ── 4. Initialize log store ───────────────────────────────────────────────
 	logStore := logstore.New()
 	defer logStore.Stop()
 
-	// ── 5. 初始化探针管理器，并加载配置文件中定义的端点探针 ─────────────────
+	// ── 5. Initialize trace store ─────────────────────────────────────────────
+	traceStore := tracestore.New()
+	defer traceStore.Stop()
+
+	// ── 6. Initialize probe manager and pre-load endpoints from config ────────
 	probeMgr := probe.NewManager(db)
 	for _, ep := range cfg.Endpoints {
 		if err := probeMgr.AddProbe(probe.ProbeConfig{
@@ -71,76 +77,86 @@ func main() {
 			TimeoutMs:      ep.TimeoutMs,
 			Headers:        ep.Headers,
 		}); err != nil {
-			fmt.Fprintf(os.Stderr, "加载端点探针 %q 失败: %v\n", ep.Name, err)
+			fmt.Fprintf(os.Stderr, "failed to load endpoint probe %q: %v\n", ep.Name, err)
 		}
 	}
 	defer probeMgr.Stop()
 
-	// ── 6. 启动摄入服务（指标 + WQL + 告警 API + 日志 API + 探针 API）───────
+	// ── 7. Start ingest server (metrics + WQL + alerts + logs + probes + traces) ──
 	ingestSrv, err := ingest.New(cfg.IngestAddr(), db)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "摄入服务启动失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "ingest server failed to start: %v\n", err)
 		os.Exit(1)
 	}
 	ingestSrv.RegisterAlertEngine(alertEng)
 	ingestSrv.RegisterLogStore(logStore)
 	ingestSrv.RegisterProbeManager(probeMgr)
+	ingestSrv.RegisterTraceStore(traceStore)
 	go func() {
 		if err := ingestSrv.Start(); err != nil {
-			// http.ErrServerClosed 是正常关闭，忽略
+			// http.ErrServerClosed is expected on clean shutdown
 		}
 	}()
 
-	// ── 7. 启动仪表板服务（Web UI + WebSocket）───────────────────────────────
+	// ── 8. Start dashboard server (Web UI + WebSocket) ────────────────────────
 	dashSrv, err := dashboard.New(cfg.DashboardAddr(), db)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "仪表板服务启动失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, "dashboard server failed to start: %v\n", err)
 		os.Exit(1)
 	}
 	dashSrv.SetAlertEngine(alertEng)
 	dashSrv.SetLogStore(logStore)
 	go func() {
 		if err := dashSrv.Start(); err != nil {
-			// 正常关闭时忽略错误
+			// expected on clean shutdown
 		}
 	}()
 
-	// ── 8. 稍等片刻确保摄入服务已就绪，再启动代理 ────────────────────────
+	// ── 9. Brief pause to ensure ingest server is ready before starting agents ─
 	time.Sleep(100 * time.Millisecond)
 
 	if cfg.Agent.Enabled {
+		// System metrics agent
 		ingestURL := fmt.Sprintf("http://localhost:%d/api/v1/metrics", cfg.Server.IngestPort)
 		ag, err := agent.New(ingestURL, time.Duration(cfg.Agent.IntervalSeconds)*time.Second)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "采集代理初始化失败: %v\n", err)
+			fmt.Fprintf(os.Stderr, "metrics agent init failed: %v\n", err)
 			os.Exit(1)
 		}
 		go ag.Start()
 		defer ag.Stop()
 
+		// Log agent
 		logURL := fmt.Sprintf("http://localhost:%d/api/v1/logs/single", cfg.Server.IngestPort)
 		logAg := agent.NewLogAgent(logURL, 10*time.Second)
 		logAg.Start()
 		defer logAg.Stop()
+
+		// Trace agent
+		traceURL := fmt.Sprintf("http://localhost:%d/api/v1/traces", cfg.Server.IngestPort)
+		traceAg := agent.NewTraceAgent(traceURL, 10*time.Second)
+		go traceAg.Start()
+		defer traceAg.Stop()
 	}
 
-	// ── 9. 打印启动信息 ──────────────────────────────────────────────────────
+	// ── 10. Print startup summary ─────────────────────────────────────────────
 	base := fmt.Sprintf("http://localhost:%d", cfg.Server.IngestPort)
 	fmt.Printf("WatchTower started — Dashboard: http://localhost:%d\n", cfg.Server.DashboardPort)
-	fmt.Printf("摄入端点: %s/api/v1/metrics\n", base)
-	fmt.Printf("WQL 查询: %s/api/v1/query?q=avg(cpu_usage_percent[5m])\n", base)
-	fmt.Printf("告警 API: %s/api/v1/alerts/rules\n", base)
-	fmt.Printf("日志 API: %s/api/v1/logs\n", base)
-	fmt.Printf("探针 API: %s/api/v1/probes\n", base)
-	fmt.Println("按 Ctrl+C 退出")
+	fmt.Printf("Ingest:  %s/api/v1/metrics\n", base)
+	fmt.Printf("WQL:     %s/api/v1/query?q=avg(cpu_usage_percent[5m])\n", base)
+	fmt.Printf("Alerts:  %s/api/v1/alerts/rules\n", base)
+	fmt.Printf("Logs:    %s/api/v1/logs\n", base)
+	fmt.Printf("Probes:  %s/api/v1/probes\n", base)
+	fmt.Printf("Traces:  %s/api/v1/traces\n", base)
+	fmt.Println("Press Ctrl+C to exit")
 
-	// ── 10. 等待终止信号，优雅关闭 ─────────────────────────────────────────
+	// ── 11. Wait for termination signal then shut down gracefully ─────────────
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	fmt.Println("\n正在关闭 WatchTower…")
+	fmt.Println("\nShutting down WatchTower…")
 	_ = dashSrv.Close()
 	_ = ingestSrv.Close()
-	fmt.Println("已安全退出")
+	fmt.Println("Goodbye.")
 }
