@@ -1190,6 +1190,28 @@
     </span>
   </div>
 
+  <!-- Forecasting section -->
+  <div class="slo-section-header" style="margin-top:1.5rem">
+    <span class="slo-section-label">Forecasting &amp; Capacity</span>
+  </div>
+  <!-- Capacity summary cards: CPU / Memory / Disk -->
+  <div id="capacity-cards" style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-top:0.4rem"></div>
+  <!-- Forecast query row -->
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-top:0.75rem">
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-bottom:0.75rem">
+      <select id="fc-metric" style="flex:1;min-width:160px;padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px">
+        <option value="cpu_usage_percent">cpu_usage_percent</option>
+        <option value="memory_usage_percent">memory_usage_percent</option>
+        <option value="disk_usage_percent">disk_usage_percent</option>
+      </select>
+      <input id="fc-threshold" type="number" placeholder="Threshold % (optional)" min="0" max="100" step="1"
+        style="width:180px;padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px">
+      <button id="fc-run-btn" style="padding:6px 14px;background:var(--accent);color:#0d1117;border:none;border-radius:5px;cursor:pointer">Forecast</button>
+    </div>
+    <div id="fc-result" style="color:var(--muted);font-size:0.85rem">Select a metric and click Forecast.</div>
+    <div style="margin-top:0.75rem;position:relative"><canvas id="fc-chart" style="max-height:220px"></canvas></div>
+  </div>
+
   <!-- Correlations section -->
   <div class="slo-section-header" style="margin-top:1.5rem">
     <span class="slo-section-label">Metric Correlation</span>
@@ -3274,6 +3296,128 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
 fetchAnomalies();
 setInterval(fetchAnomalies, 30000);
+
+// ── 资源预测与容量规划 ─────────────────────────────────────────────────────────
+let fcChart = null;
+
+// 加载容量摘要卡片（CPU/内存/磁盘）
+async function fetchCapacity() {
+  try {
+    const res = await fetch(INGEST_BASE + '/api/v1/capacity');
+    if (!res.ok) return;
+    const data = await res.json();
+    renderCapacityCards(data);
+  } catch(e) { console.warn('capacity fetch error:', e); }
+}
+
+function healthColor(status) {
+  if (status === 'critical') return 'var(--red,#f85149)';
+  if (status === 'warning') return '#e3b341';
+  return '#3fb950';
+}
+
+function trendArrow(trend) {
+  if (trend === 'increasing') return '↑';
+  if (trend === 'decreasing') return '↓';
+  return '→';
+}
+
+function renderCapacityCards(data) {
+  const container = document.getElementById('capacity-cards');
+  const metrics = [
+    {key: 'cpu',    label: 'CPU',    obj: data.cpu},
+    {key: 'memory', label: 'Memory', obj: data.memory},
+    {key: 'disk',   label: 'Disk',   obj: data.disk},
+  ];
+  container.innerHTML = metrics.map(({label, obj}) => {
+    const color = healthColor(obj.health_status);
+    const arrow = trendArrow(obj.trend);
+    const days = obj.days_until_full > 0
+      ? `<div style="font-size:0.75rem;color:var(--muted);margin-top:0.3rem">Full in ~${obj.days_until_full.toFixed(1)}d</div>`
+      : '';
+    return `<div style="flex:1;min-width:160px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:0.9rem">
+      <div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.3rem">${label}</div>
+      <div style="display:flex;align-items:center;gap:0.4rem">
+        <span style="font-size:1.4rem;font-weight:600">${obj.current_avg.toFixed(1)}%</span>
+        <span style="font-size:1.2rem;color:${color}">${arrow}</span>
+        <span style="margin-left:auto;font-size:0.72rem;font-weight:600;padding:2px 7px;border-radius:4px;background:${color}22;color:${color}">${obj.health_status}</span>
+      </div>
+      <div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">24h → ${obj.predicted_24h.toFixed(1)}%</div>
+      ${days}
+    </div>`;
+  }).join('');
+}
+
+// 运行单个指标预测并绘制图表
+document.getElementById('fc-run-btn').addEventListener('click', async () => {
+  const metric = document.getElementById('fc-metric').value;
+  const thresholdVal = document.getElementById('fc-threshold').value.trim();
+  const resultEl = document.getElementById('fc-result');
+  resultEl.textContent = 'Loading…';
+
+  try {
+    let url = `${INGEST_BASE}/api/v1/forecast?metric=${encodeURIComponent(metric)}`;
+    if (thresholdVal !== '') url += `&threshold=${encodeURIComponent(thresholdVal)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) { resultEl.textContent = 'Error: ' + data.error; return; }
+
+    if (thresholdVal !== '') {
+      // 显示耗尽估算
+      const reachable = data.reachable;
+      resultEl.innerHTML = reachable
+        ? `<strong>${metric}</strong> is <strong>${data.current_value.toFixed(1)}%</strong> &mdash; ` +
+          `estimated to reach <strong>${data.threshold}%</strong> in ` +
+          `<strong style="color:var(--red,#f85149)">${data.days_until_threshold.toFixed(1)} days</strong> ` +
+          `(${data.hours_until_threshold.toFixed(1)} hours)`
+        : `<strong>${metric}</strong> is <strong>${data.current_value.toFixed(1)}%</strong> &mdash; ` +
+          `threshold <strong>${data.threshold}%</strong> is <span style="color:#3fb950">not expected to be reached</span> at current trend.`;
+      if (fcChart) { fcChart.destroy(); fcChart = null; }
+    } else {
+      // 显示预测结果并绘图
+      const arrow = trendArrow(data.trend);
+      const confidence = (data.confidence_score * 100).toFixed(1);
+      resultEl.innerHTML =
+        `<strong>${metric}</strong> &mdash; current: <strong>${data.current_value.toFixed(2)}</strong> ` +
+        `&nbsp;${arrow}&nbsp; trend: <strong>${data.trend}</strong> &nbsp; R²: <strong>${confidence}%</strong><br>` +
+        `<span style="font-size:0.8rem;color:var(--muted)">` +
+        `1h → <strong>${data.predicted_value_1h.toFixed(2)}</strong> &nbsp;` +
+        `24h → <strong>${data.predicted_value_24h.toFixed(2)}</strong> &nbsp;` +
+        `7d → <strong>${data.predicted_value_7d.toFixed(2)}</strong></span>`;
+      renderFcChart(data);
+    }
+  } catch(e) { resultEl.textContent = 'Error: ' + e.message; }
+});
+
+function renderFcChart(data) {
+  if (fcChart) { fcChart.destroy(); fcChart = null; }
+  const ctx = document.getElementById('fc-chart').getContext('2d');
+  const now = Date.now();
+  const labels = ['now', '+1h', '+24h', '+7d'];
+  const historical = [data.current_value, null, null, null];
+  const predicted = [data.current_value, data.predicted_value_1h, data.predicted_value_24h, data.predicted_value_7d];
+  fcChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {label: 'Current', data: historical, borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,0.1)', borderWidth: 2, pointRadius: 4, spanGaps: false},
+        {label: 'Forecast', data: predicted, borderColor: '#e3b341', backgroundColor: 'rgba(227,179,65,0.08)', borderWidth: 2, borderDash: [6, 4], pointRadius: 4},
+      ]
+    },
+    options: {responsive: true, plugins: {legend: {labels: {color: 'var(--text)'}}}, scales: {
+      x: {ticks: {color: 'var(--muted)'}},
+      y: {ticks: {color: 'var(--muted)'}, grid: {color: 'rgba(128,128,128,0.15)'}}
+    }}
+  });
+}
+
+// 在 Metrics tab 激活时刷新容量数据
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  if (btn.dataset.tab === 'metrics') btn.addEventListener('click', fetchCapacity);
+});
+fetchCapacity();
+setInterval(fetchCapacity, 60000);
 
 // ── 指标相关分析 ───────────────────────────────────────────────────────────────
 let corrChart = null;

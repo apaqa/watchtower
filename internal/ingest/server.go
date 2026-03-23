@@ -13,6 +13,7 @@ import (
 	"github.com/apaqa/watchtower/internal/anomaly"
 	"github.com/apaqa/watchtower/internal/auth"
 	"github.com/apaqa/watchtower/internal/correlation"
+	"github.com/apaqa/watchtower/internal/forecast"
 	"github.com/apaqa/watchtower/internal/export"
 	"github.com/apaqa/watchtower/internal/logstore"
 	"github.com/apaqa/watchtower/internal/model"
@@ -148,6 +149,11 @@ func (s *Server) RegisterAnomalyDetector(d *anomaly.Detector) {
 // RegisterCorrelator 注册指标相关分析 API 路由（必须在 Start 之前调用）
 func (s *Server) RegisterCorrelator(c *correlation.Correlator) {
 	correlation.RegisterRoutes(s.mux, c)
+}
+
+// RegisterForecaster 注册资源预测和容量规划 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterForecaster(f *forecast.Forecaster) {
+	forecast.RegisterRoutes(s.mux, f)
 }
 
 // RegisterLogStore 注入日志存储并注册日志 API 路由（必须在 Start 之前调用）

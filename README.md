@@ -145,6 +145,18 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - **Auto-correlation**: `GET /api/v1/correlate/auto?metric=<name>` scans all other metrics and returns the top 5 most correlated (by |r|)
 - Dashboard **Correlations** widget in Metrics tab: two metric dropdowns, window selector, scatter chart, "Auto-correlate" button
 
+### Resource Forecasting & Capacity Planning
+- **Linear regression** (`y = mx + b`) fitted over the most recent 30 minutes of TSDB data
+- **ForecastResult**: metric name, current value, predicted 1h / 24h / 7d, trend direction, confidence score (R²)
+- **Trend classification**: `increasing` / `decreasing` / `stable` based on per-hour relative change rate
+- **Exhaustion estimate**: for bounded metrics (e.g. `disk_usage_percent`), predicts the Unix timestamp when they will reach a configurable threshold
+- **Capacity report**: one-call JSON summary for CPU, Memory, and Disk — current avg, peak, trend, 24h prediction, days-until-full, and health status (`healthy` / `warning` / `critical`)
+- Health thresholds: CPU/Memory critical ≥ 90% predicted 24h; Disk critical ≤ 7 days until full, warning ≤ 30 days
+- `GET /api/v1/forecast?metric=<name>` — returns ForecastResult (1h/24h/7d predictions + trend + R²)
+- `GET /api/v1/forecast?metric=<name>&threshold=<value>` — returns ExhaustionEstimate (hours/days until threshold)
+- `GET /api/v1/capacity` — returns full CapacityReport for all system metrics
+- Dashboard **Forecasting & Capacity** section in Metrics tab: capacity summary cards (CPU/Memory/Disk) with trend arrow (↑↓→) and health badge; interactive forecast widget with dashed prediction line chart
+
 ### Process Monitoring
 - Collects the top 20 processes by CPU usage every 10 seconds via `gopsutil/v3/process`
 - Per-process data: PID, name, CPU%, memory (MB + %), status (running/sleeping/zombie), start time, command line, username
@@ -203,6 +215,7 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - **Processes tab**: live process table with CPU/Memory columns; clickable column headers for client-side sorting; search filter bar; red highlight for high-CPU (>50%) or high-memory (>1GB) processes; auto-refreshes every 10 seconds
 - **Anomalies section** in Alerts tab: color-coded events (red=high, yellow=medium, blue=low), actual vs expected value, Z-score, live metric filter
 - **Correlations widget** in Metrics tab: two metric selects + window selector + "Analyze" button renders a scatter chart with the Pearson r; "Auto-correlate" lists the top 5 related metrics
+- **Forecasting & Capacity** section in Metrics tab: capacity summary cards (CPU/Memory/Disk) with trend arrow (↑↓→) and health badge (healthy/warning/critical); interactive forecast widget — select metric, optionally enter a threshold, click "Forecast" to see 1h/24h/7d predictions and a dashed-line projection chart
 - WQL query box with instant results
 - Log viewer with full-text/regex search and level filter
 - Alert manager with rule creation modal and state history
@@ -841,6 +854,25 @@ curl "http://localhost:9090/api/v1/correlate/auto?metric=cpu_usage_percent&windo
 
 Valid `window` values: `5m` `15m` `30m` `1h` `6h` `1d`
 
+### Resource Forecasting & Capacity
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/forecast?metric=<name>` | Linear-regression forecast (1h/24h/7d predictions + trend + R²) |
+| `GET` | `/api/v1/forecast?metric=<name>&threshold=<value>` | Exhaustion estimate — time until metric reaches threshold |
+| `GET` | `/api/v1/capacity` | Full capacity report for CPU, Memory, and Disk |
+
+```bash
+# Forecast CPU for 1h/24h/7d
+curl "http://localhost:9090/api/v1/forecast?metric=cpu_usage_percent"
+
+# Predict when disk will reach 90%
+curl "http://localhost:9090/api/v1/forecast?metric=disk_usage_percent&threshold=90"
+
+# Full capacity planning report
+curl "http://localhost:9090/api/v1/capacity"
+```
+
 ### Process Monitor
 
 | Method | Path | Description |
@@ -1025,7 +1057,7 @@ watchtower/
 ## Running Tests
 
 ```bash
-go test ./...                        # all packages (~288 tests)
+go test ./...                        # all packages (~305 tests)
 go test ./internal/auth/...          # auth middleware + key management (19 tests)
 go test ./internal/ingest/...        # ingest server + Prometheus parser (12 new)
 go test ./internal/registry/...      # agent registry + API (15 tests)

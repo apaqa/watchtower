@@ -16,6 +16,7 @@ import (
 	"github.com/apaqa/watchtower/internal/auth"
 	"github.com/apaqa/watchtower/internal/config"
 	"github.com/apaqa/watchtower/internal/correlation"
+	"github.com/apaqa/watchtower/internal/forecast"
 	"github.com/apaqa/watchtower/internal/dashboard"
 	"github.com/apaqa/watchtower/internal/export"
 	"github.com/apaqa/watchtower/internal/ingest"
@@ -125,6 +126,7 @@ func main() {
 	anomalyDetector.Start()
 	defer anomalyDetector.Stop()
 	correlator := correlation.New(db)
+	forecaster := forecast.New(db)
 
 	// ── 4b. Initialize API key store and pre-load keys from config ───────────
 	keyStore := auth.NewKeyStore()
@@ -193,6 +195,7 @@ func main() {
 	ingestSrv.RegisterStatusPage(statusPage)
 	ingestSrv.RegisterAnomalyDetector(anomalyDetector)
 	ingestSrv.RegisterCorrelator(correlator)
+	ingestSrv.RegisterForecaster(forecaster)
 	ingestSrv.RegisterKeyStore(keyStore)
 	go func() {
 		if err := ingestSrv.Start(); err != nil {
@@ -264,6 +267,8 @@ func main() {
 	fmt.Printf("Status:  %s/status\n", base)
 	fmt.Printf("Anomaly: %s/api/v1/anomalies\n", base)
 	fmt.Printf("Correl:  %s/api/v1/correlate?a=cpu_usage_percent&b=memory_usage_percent&window=30m\n", base)
+	fmt.Printf("Forecast:%s/api/v1/forecast?metric=cpu_usage_percent\n", base)
+	fmt.Printf("Capacity:%s/api/v1/capacity\n", base)
 	fmt.Printf("Scrape:  %s/metrics  (Prometheus scrape endpoint)\n", base)
 	fmt.Printf("Prom:    %s/api/v1/metrics/prometheus  (Prometheus push)\n", base)
 	fmt.Printf("Panels:  http://localhost:%d/api/v1/dashboard/panels\n", cfg.Server.DashboardPort)
