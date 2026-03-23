@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/apaqa/watchtower/internal/alert"
+	"github.com/apaqa/watchtower/internal/anomaly"
 	"github.com/apaqa/watchtower/internal/auth"
+	"github.com/apaqa/watchtower/internal/correlation"
 	"github.com/apaqa/watchtower/internal/export"
 	"github.com/apaqa/watchtower/internal/logstore"
 	"github.com/apaqa/watchtower/internal/model"
@@ -136,6 +138,16 @@ func (s *Server) RegisterProcessMonitor(m *procmon.Monitor) {
 // RegisterStatusPage 注册状态页路由（/status 和 /status/badge，无需认证）
 func (s *Server) RegisterStatusPage(h *statuspage.Handler) {
 	statuspage.RegisterRoutes(s.mux, h)
+}
+
+// RegisterAnomalyDetector 注册异常检测 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterAnomalyDetector(d *anomaly.Detector) {
+	anomaly.RegisterRoutes(s.mux, d)
+}
+
+// RegisterCorrelator 注册指标相关分析 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterCorrelator(c *correlation.Correlator) {
+	correlation.RegisterRoutes(s.mux, c)
 }
 
 // RegisterLogStore 注入日志存储并注册日志 API 路由（必须在 Start 之前调用）

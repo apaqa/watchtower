@@ -1190,6 +1190,32 @@
     </span>
   </div>
 
+  <!-- Correlations section -->
+  <div class="slo-section-header" style="margin-top:1.5rem">
+    <span class="slo-section-label">Metric Correlation</span>
+  </div>
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-top:0.4rem">
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-bottom:0.75rem">
+      <select id="corr-metric-a" style="flex:1;min-width:150px;padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px">
+        <option value="">Metric A…</option>
+      </select>
+      <select id="corr-metric-b" style="flex:1;min-width:150px;padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px">
+        <option value="">Metric B…</option>
+      </select>
+      <select id="corr-window" style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px">
+        <option value="5m">5m</option>
+        <option value="15m">15m</option>
+        <option value="30m" selected>30m</option>
+        <option value="1h">1h</option>
+      </select>
+      <button id="corr-analyze-btn" style="padding:6px 14px;background:var(--accent);color:#0d1117;border:none;border-radius:5px;cursor:pointer">Analyze</button>
+      <button id="corr-auto-btn" style="padding:6px 14px;background:transparent;border:1px solid var(--border);border-radius:5px;cursor:pointer;color:var(--text)">Auto-correlate</button>
+    </div>
+    <div id="corr-result" style="color:var(--muted);font-size:0.85rem">Select two metrics and click Analyze.</div>
+    <div style="margin-top:0.75rem"><canvas id="corr-chart" style="max-height:200px"></canvas></div>
+    <div id="corr-auto-result" style="margin-top:0.75rem"></div>
+  </div>
+
 </div><!-- /#tab-metrics -->
 
 <!-- ── Logs tab ─────────────────────────────────────────────────────────── -->
@@ -1267,6 +1293,21 @@
     </div>
     <div id="notify-list">
       <div style="color:var(--muted);font-size:0.85rem">No notifications sent yet</div>
+    </div>
+  </div>
+
+  <!-- Anomalies panel -->
+  <div class="notify-panel" style="margin-top:1.5rem">
+    <div class="panel-title">
+      Anomaly Detection
+      <span id="anomaly-count" style="font-size:0.78rem;font-weight:400;color:var(--muted)"></span>
+      <button id="anomaly-refresh-btn" style="margin-left:auto;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.8rem;">↻ Refresh</button>
+    </div>
+    <div style="padding:0.5rem 0;display:flex;gap:0.5rem;align-items:center">
+      <input id="anomaly-filter" type="text" placeholder="Filter by metric name…" style="flex:1;padding:5px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px;font-size:0.85rem">
+    </div>
+    <div id="anomaly-list">
+      <div style="color:var(--muted);font-size:0.85rem">No anomalies detected yet</div>
     </div>
   </div>
 
@@ -3177,6 +3218,173 @@ document.getElementById('rule-save-btn').addEventListener('click', async () => {
 
 fetchPipelineRules();
 setInterval(fetchPipelineRules, 30000);
+
+// ── 异常检测 ──────────────────────────────────────────────────────────────────
+let allAnomalies = [];
+
+async function fetchAnomalies() {
+  try {
+    const filter = document.getElementById('anomaly-filter').value;
+    const url = INGEST_BASE + '/api/v1/anomalies' + (filter ? '?metric=' + encodeURIComponent(filter) : '');
+    const res = await fetch(url);
+    allAnomalies = await res.json() || [];
+    renderAnomalies(allAnomalies);
+  } catch(e) { console.warn('anomaly fetch error:', e); }
+}
+
+function renderAnomalies(events) {
+  const el = document.getElementById('anomaly-list');
+  const countEl = document.getElementById('anomaly-count');
+  if (!events || events.length === 0) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:0.85rem">No anomalies detected</div>';
+    countEl.textContent = '';
+    return;
+  }
+  countEl.textContent = `(${events.length})`;
+  const sevColor = { high: 'var(--red)', medium: '#d29922', low: '#58a6ff' };
+  el.innerHTML = events.slice(0, 50).map(ev => {
+    const color = sevColor[ev.severity] || 'var(--muted)';
+    const ts = new Date(ev.timestamp).toLocaleTimeString();
+    const labels = Object.entries(ev.labels || {}).map(([k,v]) => `${k}="${v}"`).join(', ');
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;border-bottom:1px solid var(--border)">
+      <div>
+        <span style="font-weight:600;color:${color}">${ev.metric_name}</span>
+        ${labels ? `<span style="color:var(--muted);font-size:0.78rem;margin-left:0.4rem">{${labels}}</span>` : ''}
+        <div style="font-size:0.8rem;color:var(--muted);margin-top:2px">
+          value: <strong style="color:${color}">${ev.value.toFixed(2)}</strong>
+          · expected: ${ev.expected_value.toFixed(2)}
+          · Z-score: ${ev.deviation_score.toFixed(2)}
+          · ${ts}
+        </div>
+      </div>
+      <span style="background:${color}22;color:${color};border:1px solid ${color};border-radius:10px;padding:2px 10px;font-size:0.75rem;white-space:nowrap;margin-left:0.75rem">${ev.severity.toUpperCase()}</span>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('anomaly-refresh-btn').addEventListener('click', fetchAnomalies);
+document.getElementById('anomaly-filter').addEventListener('input', () => {
+  const filter = document.getElementById('anomaly-filter').value.toLowerCase();
+  renderAnomalies(allAnomalies.filter(e => !filter || e.metric_name.toLowerCase().includes(filter)));
+});
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  if (btn.dataset.tab === 'alerts') btn.addEventListener('click', fetchAnomalies);
+});
+
+fetchAnomalies();
+setInterval(fetchAnomalies, 30000);
+
+// ── 指标相关分析 ───────────────────────────────────────────────────────────────
+let corrChart = null;
+
+// 填充相关分析的指标下拉选项
+async function populateCorrMetrics() {
+  try {
+    const res = await fetch(INGEST_BASE + '/api/v1/query?q=avg(cpu_usage_percent[1m])');
+    // 通过 ListMetrics 端点不直接存在，改用已知指标名构建下拉
+    // 延迟到用户打开 Metrics tab 时触发
+  } catch(e) {}
+}
+
+function buildCorrDropdowns(metrics) {
+  const selA = document.getElementById('corr-metric-a');
+  const selB = document.getElementById('corr-metric-b');
+  const current = {a: selA.value, b: selB.value};
+  [selA, selB].forEach((sel, idx) => {
+    sel.innerHTML = '<option value="">Select metric…</option>' +
+      metrics.map(m => `<option value="${m}"${m === (idx===0?current.a:current.b) ? ' selected' : ''}>${m}</option>`).join('');
+  });
+}
+
+async function fetchCorrMetrics() {
+  // 从 WQL 端点获取指标名列表（通过查询每个指标来探测，但更简单的方法是直接调用 /api/v1/query）
+  // 由于没有 /api/v1/metrics/list 端点，我们从已知指标集合提供初始选项
+  // 实际使用时用户直接输入指标名或通过搜索找到
+}
+
+document.getElementById('corr-analyze-btn').addEventListener('click', async () => {
+  const a = document.getElementById('corr-metric-a').value;
+  const b = document.getElementById('corr-metric-b').value;
+  if (!a || !b) { document.getElementById('corr-result').textContent = 'Please select both metrics.'; return; }
+  const window = document.getElementById('corr-window').value;
+  try {
+    const res = await fetch(`${INGEST_BASE}/api/v1/correlate?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}&window=${window}`);
+    const data = await res.json();
+    renderCorrResult(data);
+  } catch(e) {
+    document.getElementById('corr-result').textContent = 'Error: ' + e.message;
+  }
+});
+
+document.getElementById('corr-auto-btn').addEventListener('click', async () => {
+  const a = document.getElementById('corr-metric-a').value;
+  if (!a) { document.getElementById('corr-result').textContent = 'Please select Metric A first.'; return; }
+  const window = document.getElementById('corr-window').value;
+  try {
+    const res = await fetch(`${INGEST_BASE}/api/v1/correlate/auto?metric=${encodeURIComponent(a)}&window=${window}`);
+    const data = await res.json();
+    renderAutoResult(data);
+  } catch(e) {
+    document.getElementById('corr-result').textContent = 'Error: ' + e.message;
+  }
+});
+
+function renderCorrResult(data) {
+  const r = data.coefficient;
+  const color = Math.abs(r) >= 0.7 ? (r > 0 ? '#3fb950' : '#f85149') : (Math.abs(r) >= 0.3 ? '#d29922' : 'var(--muted)');
+  document.getElementById('corr-result').innerHTML =
+    `<strong>r = <span style="color:${color}">${r.toFixed(4)}</span></strong>` +
+    ` — <em>${data.interpretation.replace(/_/g,' ')}</em>` +
+    ` (${data.sample_count} samples, window: ${data.time_range})`;
+
+  // 绘制散点图
+  const pts = data.points || [];
+  if (pts.length > 0) {
+    const ctx = document.getElementById('corr-chart');
+    if (corrChart) corrChart.destroy();
+    corrChart = new Chart(ctx, {
+      type: 'scatter',
+      data: {
+        datasets: [{
+          label: `${data.metric_a} vs ${data.metric_b}`,
+          data: pts,
+          backgroundColor: color + '88',
+          pointRadius: 3,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { title: { display: true, text: data.metric_a, color: 'var(--muted)' }, ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+          y: { title: { display: true, text: data.metric_b, color: 'var(--muted)' }, ticks: { color: '#8b949e' }, grid: { color: '#21262d' } }
+        }
+      }
+    });
+  }
+}
+
+function renderAutoResult(data) {
+  const container = document.getElementById('corr-auto-result');
+  if (!data.related || data.related.length === 0) {
+    container.innerHTML = '<div style="color:var(--muted);font-size:0.85rem">No correlated metrics found (need more data)</div>';
+    return;
+  }
+  container.innerHTML = '<div style="font-size:0.82rem;color:var(--muted);margin-bottom:0.4rem">Top correlated metrics for <strong>' + data.source_metric + '</strong>:</div>' +
+    data.related.map(r => {
+      const color = Math.abs(r.coefficient) >= 0.7 ? (r.coefficient > 0 ? '#3fb950' : '#f85149') : '#d29922';
+      return `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
+        <span>${r.metric_b}</span>
+        <span style="color:${color};font-weight:600">r=${r.coefficient.toFixed(3)} <span style="color:var(--muted);font-weight:400;font-size:0.78rem">${r.interpretation.replace(/_/g,' ')}</span></span>
+      </div>`;
+    }).join('');
+}
+
+// 切换到 Metrics tab 时填充指标下拉选项（使用固定常用指标列表 + 动态扩展）
+const KNOWN_METRICS = ['cpu_usage_percent','memory_usage_percent','memory_used_bytes','disk_usage_percent',
+  'process_cpu','process_memory_mb','probe_status','probe_response_ms'];
+buildCorrDropdowns(KNOWN_METRICS);
 
 // ── 数据导出 ──────────────────────────────────────────────────────────────────
 function exportData(type, format) {

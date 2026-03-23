@@ -127,6 +127,24 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - `POST /api/v1/slos` creates an SLO; `DELETE /api/v1/slos/{name}` removes it
 - Dashboard **SLO Status** section in Metrics tab: progress bar per SLO (green/yellow/red), "+ Add SLO" modal
 
+### Anomaly Detection
+- Background goroutine scans all active TSDB metric series every 30 seconds
+- **Z-score detection**: uses the last 30-minute rolling window as a baseline; flags the latest point as an anomaly if `|value − mean| / stddev ≥ 3`
+- Skips series with fewer than 5 samples or near-zero standard deviation (flat-line guard)
+- Severity classification: Z ≥ 5 → **high**, Z ≥ 3.5 → **medium**, Z ≥ 3 → **low**
+- Ring buffer retains the last 500 `AnomalyEvent` records
+- `GET /api/v1/anomalies` returns all recent events; `?metric=<name>` filters by metric name
+- Dashboard **Anomalies** section in Alerts tab: color-coded by severity (red/yellow/blue), shows actual vs. expected value and Z-score, live filter bar
+
+### Metric Correlation
+- Computes **Pearson correlation coefficient** between any two TSDB metrics over a configurable time window
+- Time windows: `5m`, `15m`, `30m`, `1h`, `6h`, `1d`
+- Aligns series by 1-minute buckets; only overlapping timestamps contribute to the coefficient
+- Interpretation labels: `strong_positive` (|r| ≥ 0.7) · `weak_positive` · `none` · `weak_negative` · `strong_negative`
+- Returns scatter-plot data points (`{x, y}` pairs) alongside the coefficient for direct Chart.js rendering
+- **Auto-correlation**: `GET /api/v1/correlate/auto?metric=<name>` scans all other metrics and returns the top 5 most correlated (by |r|)
+- Dashboard **Correlations** widget in Metrics tab: two metric dropdowns, window selector, scatter chart, "Auto-correlate" button
+
 ### Process Monitoring
 - Collects the top 20 processes by CPU usage every 10 seconds via `gopsutil/v3/process`
 - Per-process data: PID, name, CPU%, memory (MB + %), status (running/sleeping/zombie), start time, command line, username
@@ -183,6 +201,8 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - **Aggregation Rules** section in Metrics tab: list active rules, "+ Add Rule" modal, delete rules
 - **Export buttons** on Metrics and Logs tabs: one-click CSV/JSON download for the current dataset
 - **Processes tab**: live process table with CPU/Memory columns; clickable column headers for client-side sorting; search filter bar; red highlight for high-CPU (>50%) or high-memory (>1GB) processes; auto-refreshes every 10 seconds
+- **Anomalies section** in Alerts tab: color-coded events (red=high, yellow=medium, blue=low), actual vs expected value, Z-score, live metric filter
+- **Correlations widget** in Metrics tab: two metric selects + window selector + "Analyze" button renders a scatter chart with the Pearson r; "Auto-correlate" lists the top 5 related metrics
 - WQL query box with instant results
 - Log viewer with full-text/regex search and level filter
 - Alert manager with rule creation modal and state history
@@ -239,6 +259,8 @@ go build -o watchtower ./cmd/watchtower
 | Process API | http://localhost:9090/api/v1/processes |
 | Status Page | http://localhost:9090/status |
 | Status Badge | http://localhost:9090/status/badge |
+| Anomaly API | http://localhost:9090/api/v1/anomalies |
+| Correlation API | http://localhost:9090/api/v1/correlate |
 
 ## Configuration
 
@@ -785,6 +807,40 @@ Response entry:
 
 The WQL query must return a 0–100 value representing the SLI percentage. Windows: `1d`, `7d`, `30d`.
 
+### Anomaly Detection
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/anomalies` | List recent anomaly events (newest first) |
+| `GET` | `/api/v1/anomalies?metric=<name>` | Filter anomaly events by metric name |
+
+```bash
+# All recent anomalies
+curl http://localhost:9090/api/v1/anomalies
+
+# Filter by metric
+curl "http://localhost:9090/api/v1/anomalies?metric=cpu_usage_percent"
+```
+
+Response entries include `metric_name`, `labels`, `value`, `expected_value`, `deviation_score`, and `severity` (`low`/`medium`/`high`).
+
+### Metric Correlation
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/correlate?a=<m>&b=<m>&window=<w>` | Pearson correlation between two metrics |
+| `GET` | `/api/v1/correlate/auto?metric=<m>&window=<w>` | Top 5 most correlated metrics |
+
+```bash
+# Correlation between CPU and memory over 30 minutes
+curl "http://localhost:9090/api/v1/correlate?a=cpu_usage_percent&b=memory_usage_percent&window=30m"
+
+# Auto-discover metrics correlated with CPU over 1 hour
+curl "http://localhost:9090/api/v1/correlate/auto?metric=cpu_usage_percent&window=1h"
+```
+
+Valid `window` values: `5m` `15m` `30m` `1h` `6h` `1d`
+
 ### Process Monitor
 
 | Method | Path | Description |
@@ -969,7 +1025,7 @@ watchtower/
 ## Running Tests
 
 ```bash
-go test ./...                        # all packages (~257 tests)
+go test ./...                        # all packages (~288 tests)
 go test ./internal/auth/...          # auth middleware + key management (19 tests)
 go test ./internal/ingest/...        # ingest server + Prometheus parser (12 new)
 go test ./internal/registry/...      # agent registry + API (15 tests)
