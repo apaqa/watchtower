@@ -743,6 +743,116 @@
       padding: 20px 0;
     }
 
+    /* ── Agents tab ── */
+    #tab-agents { padding: 24px; }
+    .agent-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .agent-panel-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    #agent-table-wrap {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: auto;
+    }
+    #agent-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    #agent-table thead th {
+      background: var(--bg);
+      color: var(--muted);
+      font-weight: 600;
+      text-align: left;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    #agent-table tbody tr { border-bottom: 1px solid rgba(48,54,61,0.5); transition: background 0.1s; }
+    #agent-table tbody tr:hover { background: rgba(48,54,61,0.4); }
+    #agent-table tbody tr:last-child { border-bottom: none; }
+    #agent-table td { padding: 8px 14px; vertical-align: middle; }
+    .agent-status-online  { background: rgba(63,185,80,0.2);  color: var(--green); border: 1px solid rgba(63,185,80,0.4);  padding: 2px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; }
+    .agent-status-offline { background: rgba(248,81,73,0.2);  color: var(--red);   border: 1px solid rgba(248,81,73,0.4);  padding: 2px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; }
+    #agent-empty { text-align: center; padding: 40px 0; color: var(--muted); font-size: 0.88rem; }
+
+    /* ── Custom panels section ── */
+    #custom-panels-section {
+      grid-column: 1 / -1;
+      display: contents;
+    }
+    .custom-panels-header {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .custom-panels-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    #add-panel-btn {
+      background: var(--accent);
+      color: #0d1117;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: opacity 0.15s;
+    }
+    #add-panel-btn:hover { opacity: 0.85; }
+    .custom-panel-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+    }
+    .custom-panel-card .panel-title { color: var(--muted); }
+    .custom-panel-value { font-size: 2.2rem; font-weight: 700; color: var(--purple); font-variant-numeric: tabular-nums; }
+    .custom-panel-query { font-size: 0.72rem; color: var(--muted); font-family: "Fira Code", monospace; }
+    .custom-panel-delete {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.85rem;
+      line-height: 1;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .custom-panel-delete:hover { color: var(--red); background: rgba(248,81,73,0.1); }
+
+    /* Add panel modal */
+    #panel-modal .modal { width: min(480px, 95vw); }
+
     /* ── Footer ── */
     footer {
       text-align: center;
@@ -769,6 +879,7 @@
   <button class="tab-btn" data-tab="alerts">Alerts</button>
   <button class="tab-btn" data-tab="uptime">Endpoints</button>
   <button class="tab-btn" data-tab="traces">Traces</button>
+  <button class="tab-btn" data-tab="agents">Agents</button>
 </nav>
 
 <!-- ── Metrics tab ──────────────────────────────────────────────────────── -->
@@ -825,6 +936,15 @@
     </div>
     <div id="wql-result"><span style="color:var(--muted)">Enter a WQL expression and click Run</span></div>
   </div>
+
+  <!-- Custom panels header -->
+  <div class="custom-panels-header">
+    <span class="custom-panels-label">Custom Panels</span>
+    <button id="add-panel-btn">+ Add Panel</button>
+  </div>
+
+  <!-- Custom panel cards injected here by JS -->
+  <div id="custom-panels-container" style="display:contents"></div>
 
 </div><!-- /#tab-metrics -->
 
@@ -1021,6 +1141,70 @@
     </div>
     <div class="trace-list" id="trace-list">
       <div id="trace-empty">No traces recorded yet</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Agents tab ─────────────────────────────────────────────────────────── -->
+<div id="tab-agents" class="tab-panel">
+  <div class="agent-panel">
+    <div class="agent-panel-title">
+      Connected Agents
+      <span id="agent-summary" style="font-size:0.8rem;font-weight:400;color:var(--muted)"></span>
+    </div>
+    <div id="agent-table-wrap">
+      <table id="agent-table">
+        <thead>
+          <tr>
+            <th>Hostname</th>
+            <th>IP Address</th>
+            <th>OS / Arch</th>
+            <th>Status</th>
+            <th>Last Seen</th>
+            <th>Registered</th>
+          </tr>
+        </thead>
+        <tbody id="agent-tbody">
+          <tr><td colspan="6" id="agent-empty">No agents registered yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Add Panel modal -->
+<div class="modal-overlay" id="panel-modal">
+  <div class="modal">
+    <h2>Add Custom Panel</h2>
+    <div class="form-row">
+      <label>Panel ID (unique, no spaces)</label>
+      <input id="pm-id" type="text" placeholder="my_panel" />
+    </div>
+    <div class="form-row">
+      <label>Title</label>
+      <input id="pm-title" type="text" placeholder="My Metric" />
+    </div>
+    <div class="form-row">
+      <label>WQL Query</label>
+      <input id="pm-query" type="text" placeholder="avg(cpu_usage_percent[5m])" />
+    </div>
+    <div class="form-row-inline">
+      <div class="form-row">
+        <label>Panel Type</label>
+        <select id="pm-type">
+          <option value="stat">Stat (number)</option>
+          <option value="gauge">Gauge (%)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Refresh (seconds)</label>
+        <input id="pm-refresh" type="number" value="30" min="5" />
+      </div>
+    </div>
+    <div id="panel-modal-error" style="color:var(--red);font-size:0.82rem;display:none"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="panel-modal-cancel">Cancel</button>
+      <button class="btn-primary" id="panel-modal-submit">Add</button>
     </div>
   </div>
 </div>
@@ -1847,6 +2031,187 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // Initial load + refresh every 30 seconds
 fetchTraces();
 setInterval(fetchTraces, 30000);
+
+// ── Agent Registry ─────────────────────────────────────────────────────────────
+const AGENTS_API = 'http://localhost:9090/api/v1/agents';
+
+async function fetchAgents() {
+  try {
+    const resp = await fetch(AGENTS_API);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const agents = await resp.json();
+    renderAgents(agents);
+  } catch(e) {
+    document.getElementById('agent-tbody').innerHTML =
+      '<tr><td colspan="6" style="color:var(--red);padding:20px">Failed to load agents: ' + escapeHtml(String(e)) + '</td></tr>';
+  }
+}
+
+function renderAgents(agents) {
+  const tbody = document.getElementById('agent-tbody');
+  const summaryEl = document.getElementById('agent-summary');
+
+  if (!agents || agents.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" id="agent-empty">No agents registered yet</td></tr>';
+    summaryEl.textContent = '';
+    return;
+  }
+
+  const online  = agents.filter(a => a.status === 'online').length;
+  const offline = agents.length - online;
+  summaryEl.textContent = online + ' Online / ' + offline + ' Offline';
+
+  const now = Date.now();
+  tbody.innerHTML = agents.map(a => {
+    const statusCls = a.status === 'online' ? 'agent-status-online' : 'agent-status-offline';
+    const lastSeen  = a.last_seen_at ? relativeTime(now - a.last_seen_at) : '—';
+    const regAt     = a.registered_at ? new Date(a.registered_at).toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '—';
+    return `<tr>
+      <td style="font-weight:600">${escapeHtml(a.hostname || '—')}</td>
+      <td style="font-family:monospace;font-size:0.83rem">${escapeHtml(a.ip_address || '—')}</td>
+      <td style="font-size:0.82rem;color:var(--muted)">${escapeHtml((a.os||'') + ' / ' + (a.arch||''))}</td>
+      <td><span class="${statusCls}">${escapeHtml(a.status)}</span></td>
+      <td style="color:var(--muted);font-size:0.82rem">${escapeHtml(lastSeen)}</td>
+      <td style="color:var(--muted);font-size:0.82rem">${escapeHtml(regAt)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function relativeTime(ms) {
+  const s = Math.floor(ms / 1000);
+  if (s < 5)  return 'just now';
+  if (s < 60) return s + 's ago';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm ago';
+  return Math.floor(m / 60) + 'h ago';
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  if (btn.dataset.tab === 'agents') btn.addEventListener('click', fetchAgents);
+});
+
+fetchAgents();
+setInterval(fetchAgents, 15000);
+
+// ── Custom Panels ──────────────────────────────────────────────────────────────
+const PANELS_API = 'http://localhost:8080/api/v1/dashboard/panels';
+
+// Stores active panel refresh timers keyed by panel id
+const panelTimers = {};
+
+async function fetchCustomPanels() {
+  try {
+    const resp = await fetch(PANELS_API);
+    if (!resp.ok) return;
+    const panels = await resp.json();
+    renderCustomPanels(panels);
+  } catch(_) { /* server may not be up yet */ }
+}
+
+function renderCustomPanels(panels) {
+  const container = document.getElementById('custom-panels-container');
+  // Clear existing timers
+  Object.keys(panelTimers).forEach(id => { clearInterval(panelTimers[id]); delete panelTimers[id]; });
+  container.innerHTML = '';
+
+  if (!panels || panels.length === 0) return;
+
+  panels.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'custom-panel-card';
+    div.id = 'cpanel-' + p.id;
+    div.innerHTML = `
+      <button class="custom-panel-delete" data-id="${escapeHtml(p.id)}" title="Remove panel">&times;</button>
+      <div class="panel-title">${escapeHtml(p.title)}</div>
+      <div class="custom-panel-value" id="cpval-${escapeHtml(p.id)}">—</div>
+      <div class="custom-panel-query">${escapeHtml(p.wql_query)}</div>`;
+    container.appendChild(div);
+
+    // Attach delete handler
+    div.querySelector('.custom-panel-delete').addEventListener('click', () => deletePanel(p.id));
+
+    // Fetch value immediately and set up auto-refresh
+    fetchPanelValue(p.id, p.wql_query);
+    const interval = Math.max(5, p.refresh_interval || 30) * 1000;
+    panelTimers[p.id] = setInterval(() => fetchPanelValue(p.id, p.wql_query), interval);
+  });
+}
+
+async function fetchPanelValue(panelId, query) {
+  const el = document.getElementById('cpval-' + panelId);
+  if (!el) return;
+  try {
+    const resp = await fetch('http://localhost:9090/api/v1/query?q=' + encodeURIComponent(query));
+    if (!resp.ok) { el.textContent = 'ERR'; el.style.color = 'var(--red)'; return; }
+    const result = await resp.json();
+    if (result.type === 'scalar') {
+      el.textContent = result.value.toFixed(2);
+    } else if (result.type === 'bool') {
+      el.textContent = result.value ? 'true' : 'false';
+    } else {
+      el.textContent = JSON.stringify(result.value).slice(0, 40);
+    }
+    el.style.color = 'var(--purple)';
+  } catch(_) { el.textContent = '—'; }
+}
+
+async function deletePanel(id) {
+  try {
+    await fetch(PANELS_API + '/' + encodeURIComponent(id), { method: 'DELETE' });
+    fetchCustomPanels();
+  } catch(_) {}
+}
+
+// Add Panel modal logic
+const panelModal = document.getElementById('panel-modal');
+document.getElementById('add-panel-btn').addEventListener('click', () => {
+  panelModal.classList.add('open');
+  document.getElementById('panel-modal-error').style.display = 'none';
+});
+document.getElementById('panel-modal-cancel').addEventListener('click', () => {
+  panelModal.classList.remove('open');
+});
+panelModal.addEventListener('click', e => { if (e.target === panelModal) panelModal.classList.remove('open'); });
+
+document.getElementById('panel-modal-submit').addEventListener('click', async () => {
+  const id      = document.getElementById('pm-id').value.trim();
+  const title   = document.getElementById('pm-title').value.trim();
+  const query   = document.getElementById('pm-query').value.trim();
+  const type    = document.getElementById('pm-type').value;
+  const refresh = parseInt(document.getElementById('pm-refresh').value) || 30;
+  const errEl   = document.getElementById('panel-modal-error');
+
+  if (!id || !title || !query) {
+    errEl.textContent = 'ID, title, and WQL query are required.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    const resp = await fetch(PANELS_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, title, wql_query: query, panel_type: type, refresh_interval: refresh, width: 1 }),
+    });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      errEl.textContent = body.error || 'Failed to add panel.';
+      errEl.style.display = 'block';
+      return;
+    }
+    panelModal.classList.remove('open');
+    document.getElementById('pm-id').value = '';
+    document.getElementById('pm-title').value = '';
+    document.getElementById('pm-query').value = '';
+    fetchCustomPanels();
+  } catch(e) {
+    errEl.textContent = 'Network error: ' + String(e);
+    errEl.style.display = 'block';
+  }
+});
+
+fetchCustomPanels();
+setInterval(fetchCustomPanels, 60000);
 </script>
 </body>
 </html>

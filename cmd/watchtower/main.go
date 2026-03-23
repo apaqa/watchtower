@@ -17,6 +17,7 @@ import (
 	"github.com/apaqa/watchtower/internal/ingest"
 	"github.com/apaqa/watchtower/internal/logstore"
 	"github.com/apaqa/watchtower/internal/probe"
+	"github.com/apaqa/watchtower/internal/registry"
 	"github.com/apaqa/watchtower/internal/tracestore"
 	"github.com/apaqa/watchtower/internal/tsdb"
 )
@@ -65,6 +66,13 @@ func main() {
 	traceStore := tracestore.New()
 	defer traceStore.Stop()
 
+	// ── 5b. Initialize agent registry ────────────────────────────────────────
+	agentRegistry := registry.New()
+	defer agentRegistry.Stop()
+
+	// ── 5c. Initialize custom panel store ────────────────────────────────────
+	panelStore := dashboard.NewPanelStore()
+
 	// ── 6. Initialize probe manager and pre-load endpoints from config ────────
 	probeMgr := probe.NewManager(db)
 	for _, ep := range cfg.Endpoints {
@@ -92,6 +100,7 @@ func main() {
 	ingestSrv.RegisterLogStore(logStore)
 	ingestSrv.RegisterProbeManager(probeMgr)
 	ingestSrv.RegisterTraceStore(traceStore)
+	ingestSrv.RegisterAgentRegistry(agentRegistry)
 	go func() {
 		if err := ingestSrv.Start(); err != nil {
 			// http.ErrServerClosed is expected on clean shutdown
@@ -106,6 +115,7 @@ func main() {
 	}
 	dashSrv.SetAlertEngine(alertEng)
 	dashSrv.SetLogStore(logStore)
+	dashSrv.SetPanelStore(panelStore)
 	go func() {
 		if err := dashSrv.Start(); err != nil {
 			// expected on clean shutdown
@@ -123,6 +133,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "metrics agent init failed: %v\n", err)
 			os.Exit(1)
 		}
+		registryURL := fmt.Sprintf("http://localhost:%d/api/v1/agents/register", cfg.Server.IngestPort)
+		ag.SetRegistryURL(registryURL)
 		go ag.Start()
 		defer ag.Stop()
 
@@ -148,6 +160,8 @@ func main() {
 	fmt.Printf("Logs:    %s/api/v1/logs\n", base)
 	fmt.Printf("Probes:  %s/api/v1/probes\n", base)
 	fmt.Printf("Traces:  %s/api/v1/traces\n", base)
+	fmt.Printf("Agents:  %s/api/v1/agents\n", base)
+	fmt.Printf("Panels:  http://localhost:%d/api/v1/dashboard/panels\n", cfg.Server.DashboardPort)
 	fmt.Println("Press Ctrl+C to exit")
 
 	// ── 11. Wait for termination signal then shut down gracefully ─────────────

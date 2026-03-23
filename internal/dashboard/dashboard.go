@@ -56,6 +56,7 @@ type client struct {
 // Server 是仪表板 HTTP 服务，包含 WebSocket hub
 type Server struct {
 	db       *tsdb.TSDB
+	mux      *http.ServeMux
 	httpSrv  *http.Server
 	listener net.Listener
 
@@ -73,13 +74,13 @@ type Server struct {
 
 // New 创建仪表板服务实例并绑定到 addr
 func New(addr string, db *tsdb.TSDB) (*Server, error) {
+	mux := http.NewServeMux()
 	s := &Server{
 		db:      db,
+		mux:     mux,
 		clients: make(map[*client]struct{}),
 		stopCh:  make(chan struct{}),
 	}
-
-	mux := http.NewServeMux()
 
 	// 提取嵌入的 static 子目录为文件系统
 	staticFS, err := fs.Sub(staticFiles, "static")
@@ -123,6 +124,12 @@ func (s *Server) SetLogStore(ls *logstore.Store) {
 	s.mu.Lock()
 	s.logStore = ls
 	s.mu.Unlock()
+}
+
+// SetPanelStore registers custom-panel API routes on the dashboard server.
+// Must be called before Start.
+func (s *Server) SetPanelStore(ps *PanelStore) {
+	RegisterPanelRoutes(s.mux, ps)
 }
 
 // Start 启动 HTTP 服务和推送循环（应在 goroutine 中调用）

@@ -13,6 +13,7 @@ import (
 	"github.com/apaqa/watchtower/internal/logstore"
 	"github.com/apaqa/watchtower/internal/model"
 	"github.com/apaqa/watchtower/internal/probe"
+	"github.com/apaqa/watchtower/internal/registry"
 	"github.com/apaqa/watchtower/internal/tracestore"
 	"github.com/apaqa/watchtower/internal/tsdb"
 	"github.com/apaqa/watchtower/internal/wql"
@@ -70,6 +71,11 @@ func (s *Server) RegisterProbeManager(pm *probe.Manager) {
 // RegisterTraceStore 注入 trace 存储并注册 trace API 路由（必须在 Start 之前调用）
 func (s *Server) RegisterTraceStore(ts *tracestore.Store) {
 	tracestore.RegisterRoutes(s.mux, ts)
+}
+
+// RegisterAgentRegistry registers agent registry API routes (must be called before Start).
+func (s *Server) RegisterAgentRegistry(reg *registry.Registry) {
+	registry.RegisterRoutes(s.mux, reg)
 }
 
 // RegisterLogStore 注入日志存储并注册日志 API 路由（必须在 Start 之前调用）

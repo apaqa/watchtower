@@ -1,43 +1,43 @@
 # WatchTower
 
-A lightweight, self-contained monitoring platform written in Go. A single binary collects system metrics, stores time-series data, evaluates alert rules, tails logs, probes HTTP endpoints, and records distributed traces — all without external databases or message queues.
+A lightweight, self-contained monitoring platform written in Go. A single binary collects system metrics, stores time-series data, evaluates alert rules, tails logs, probes HTTP endpoints, records distributed traces, and manages a registry of connected agents — all without external databases or message queues.
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        WatchTower Process                         │
-│                                                                   │
-│  ┌───────────┐  POST /api/v1/metrics  ┌──────────────────────┐   │
-│  │  System   │ ─────────────────────▶ │  Ingest API  :9090   │   │
-│  │  Agent    │                        │  WQL Query API        │   │
-│  │(gopsutil) │                        │  Alert API            │   │
-│  └───────────┘                        │  Log API              │   │
-│                                       │  Probe API            │   │
-│  ┌───────────┐  POST /api/v1/logs     │  Trace API            │   │
-│  │  Log      │ ─────────────────────▶ └──────────┬───────────┘   │
-│  │  Agent    │                                    │ Write / Query │
-│  └───────────┘                                    ▼               │
-│                                        ┌────────────────────┐    │
-│  ┌───────────┐  probe_status metric    │   In-Memory TSDB   │    │
-│  │  Endpoint │ ─────────────────────▶ │ + Gorilla Disk      │    │
-│  │  Probes   │                        │   Persistence       │    │
-│  └───────────┘                        └─────────┬──────────┘    │
-│                                                  │ Query          │
-│  ┌───────────┐  POST /api/v1/traces              ▼                │
-│  │  Trace    │ ─────────────────────▶ ┌────────────────────┐    │
-│  │  Agent    │                        │  Trace Store       │    │
-│  └───────────┘                        │  (max 1000 traces, │    │
-│                                        │   1-hour retention)│    │
-│                                        └─────────┬──────────┘    │
-│                                                  │ REST API       │
-│                                                  ▼                │
-│                                   ┌──────────────────────────┐   │
-│  Browser ◀─── WebSocket ────────  │   Dashboard  :8080       │   │
-│           ◀─── HTML / JS ────────  │   Metrics/Logs/Alerts/  │   │
-│                                   │   Endpoints/Traces tabs  │   │
-│                                   └──────────────────────────┘   │
-└──────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                         WatchTower Process                           │
+│                                                                      │
+│  ┌───────────┐  POST /api/v1/metrics       ┌─────────────────────┐  │
+│  │  System   │ ──────────────────────────▶ │  Ingest API  :9090  │  │
+│  │  Agent    │  POST /api/v1/agents/       │  WQL Query API       │  │
+│  │(gopsutil) │       register (heartbeat)  │  Alert API           │  │
+│  └───────────┘                             │  Log API             │  │
+│                                            │  Probe API           │  │
+│  ┌───────────┐  POST /api/v1/logs          │  Trace API           │  │
+│  │  Log      │ ──────────────────────────▶ │  Agent Registry API  │  │
+│  │  Agent    │                             └──────────┬──────────┘  │
+│  └───────────┘                                        │ Write/Query  │
+│                                                       ▼              │
+│  ┌───────────┐  probe_status metric         ┌──────────────────┐    │
+│  │  Endpoint │ ──────────────────────────▶  │  In-Memory TSDB  │    │
+│  │  Probes   │                              │ + Gorilla Disk    │    │
+│  └───────────┘                              │   Persistence     │    │
+│                                             └────────┬─────────┘    │
+│  ┌───────────┐  POST /api/v1/traces                  │              │
+│  │  Trace    │ ──────────────────────────▶  ┌────────────────┐      │
+│  │  Agent    │                              │  Trace Store   │      │
+│  └───────────┘                              │(1000 / 1h TTL) │      │
+│                                             └────────┬───────┘      │
+│                                                      │ REST          │
+│                                                      ▼               │
+│                                      ┌───────────────────────────┐  │
+│  Browser ◀─── WebSocket ──────────   │   Dashboard  :8080        │  │
+│           ◀─── HTML / JS ──────────  │   Metrics · Logs · Alerts │  │
+│           ◀─── Panel API ──────────  │   Endpoints · Traces      │  │
+│                                      │   Agents · Custom Panels  │  │
+│                                      └───────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Features
@@ -87,15 +87,32 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - Trace agent generates synthetic 4-span traces every 10 seconds simulating a real API call chain
 - 20% chance of error spans for realistic error-rate simulation
 
+### Agent Registry
+- Agents register via `POST /api/v1/agents/register` on startup and send heartbeats every 15 seconds
+- Thread-safe in-memory registry indexed by `agent_id` (UUID v4, generated at startup)
+- Background health-check goroutine marks agents offline after 30 seconds of silence
+- Each agent reports: `hostname`, `ip_address` (auto-detected), `os`, `arch`, `labels`
+- Full CRUD REST API: list, get, delete agents
+- System agent now embeds `agent_id` label on every metric data point
+
+### Custom Dashboard Panels
+- Users can define custom metric panels from any WQL expression via the dashboard UI
+- In-memory `PanelStore` backed by ordered insertion; supports `stat` and `gauge` panel types
+- Per-panel configurable auto-refresh interval (minimum 5 seconds, default 30 seconds)
+- REST API at `:8080/api/v1/dashboard/panels`: `POST` to create, `GET` to list, `DELETE /{id}` to remove
+- Panels persist for the lifetime of the process and appear in the Metrics tab "Custom Panels" section
+
 ### Dashboard
 - Dark-theme single-page app served at `:8080`
 - Live Chart.js line charts via WebSocket push (5-second interval)
-- Five tabs: **Metrics** · **Logs** · **Alerts** · **Endpoints** · **Traces**
+- **Six tabs**: **Metrics** · **Logs** · **Alerts** · **Endpoints** · **Traces** · **Agents**
 - WQL query box with instant results
 - Log viewer with full-text/regex search and level filter
 - Alert manager with rule creation modal and state history
 - Endpoint cards with status badge, response time, uptime %, sparkline chart, and 20-check status dots
-- Trace list with service filter and min-duration filter; click any trace to expand a proportional **waterfall diagram** showing each span as a horizontal bar colored green (ok) or red (error), indented by parent–child depth
+- Trace list with service filter and min-duration filter; click any trace to expand a proportional **waterfall diagram**
+- **Agents tab**: table with hostname, IP, OS, status badge (online/offline), last-seen (relative), registered time; "X Online / Y Offline" summary; auto-refreshes every 15 seconds
+- **Custom Panels** section in the Metrics tab: "+ Add Panel" button opens a modal; each panel auto-refreshes its WQL query at the configured interval
 
 ### YAML Configuration
 - `watchtower.yaml` at project root controls all ports, intervals, and pre-loaded rules/probes
@@ -132,6 +149,8 @@ go build -o watchtower ./cmd/watchtower
 | Log API | http://localhost:9090/api/v1/logs |
 | Probe API | http://localhost:9090/api/v1/probes |
 | Trace API | http://localhost:9090/api/v1/traces |
+| Agent Registry | http://localhost:9090/api/v1/agents |
+| Custom Panels API | http://localhost:8080/api/v1/dashboard/panels |
 
 ## Configuration
 
@@ -401,6 +420,94 @@ Span schema:
 
 `status` is `"ok"` or `"error"`. `parent_span_id` is omitted (or empty string) for root spans.
 
+### Agent Registry
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST`   | `/api/v1/agents/register` | Register or heartbeat (upsert by `agent_id`) |
+| `GET`    | `/api/v1/agents` | List all agents with current status |
+| `GET`    | `/api/v1/agents/{id}` | Get a single agent |
+| `DELETE` | `/api/v1/agents/{id}` | Remove an agent |
+
+```bash
+# Register (also used for heartbeats — same endpoint)
+curl -X POST http://localhost:9090/api/v1/agents/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "550e8400-e29b-41d4-a716-446655440000",
+    "hostname": "node1",
+    "ip_address": "192.168.1.10",
+    "os": "linux",
+    "arch": "amd64",
+    "labels": {"env": "prod"}
+  }'
+
+# List
+curl http://localhost:9090/api/v1/agents
+```
+
+Agent status response:
+
+```json
+{
+  "agent_id":     "550e8400-e29b-41d4-a716-446655440000",
+  "hostname":     "node1",
+  "ip_address":   "192.168.1.10",
+  "os":           "linux",
+  "arch":         "amd64",
+  "status":       "online",
+  "registered_at": 1711000000000,
+  "last_seen_at":  1711000060000,
+  "labels":        {"env": "prod"}
+}
+```
+
+An agent is marked `"offline"` if it has not sent a heartbeat within 30 seconds.
+
+### Custom Panels
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST`   | `/api/v1/dashboard/panels` | Create a custom panel |
+| `GET`    | `/api/v1/dashboard/panels` | List all panels |
+| `GET`    | `/api/v1/dashboard/panels/{id}` | Get a panel |
+| `DELETE` | `/api/v1/dashboard/panels/{id}` | Remove a panel |
+
+```bash
+# Create a panel
+curl -X POST http://localhost:8080/api/v1/dashboard/panels \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "avg_cpu",
+    "title": "Average CPU",
+    "wql_query": "avg(cpu_usage_percent[5m])",
+    "panel_type": "stat",
+    "refresh_interval": 10
+  }'
+
+# List
+curl http://localhost:8080/api/v1/dashboard/panels
+
+# Remove
+curl -X DELETE http://localhost:8080/api/v1/dashboard/panels/avg_cpu
+```
+
+Panel schema:
+
+```json
+{
+  "id":               "avg_cpu",
+  "title":            "Average CPU",
+  "panel_type":       "stat",
+  "wql_query":        "avg(cpu_usage_percent[5m])",
+  "width":            1,
+  "refresh_interval": 10,
+  "created_at":       1711000000000
+}
+```
+
+`panel_type` is `"stat"` (large number) or `"gauge"` (percentage). `refresh_interval` minimum is 5 seconds.
+
 ### WebSocket `/ws`
 
 Connected clients receive a push every 5 seconds:
@@ -465,14 +572,19 @@ watchtower/
 │   │   ├── store.go             # In-memory trace store, ring-buffer eviction, 1h retention
 │   │   ├── api.go               # Trace HTTP API (ingest, list, get)
 │   │   └── store_test.go
+│   ├── registry/
+│   │   ├── registry.go          # Agent registry: thread-safe map, offline detection
+│   │   ├── api.go               # Agent CRUD HTTP API (/api/v1/agents/...)
+│   │   └── registry_test.go
 │   ├── ingest/
 │   │   ├── server.go            # Ingest HTTP server
 │   │   ├── server_test.go
 │   │   └── log_api_test.go
 │   ├── dashboard/
 │   │   ├── dashboard.go         # WebSocket server + static file handler
+│   │   ├── panels.go            # Custom panel store + panel CRUD HTTP API
 │   │   └── static/
-│   │       └── index.html       # Single-page dashboard (Metrics/Logs/Alerts/Endpoints)
+│   │       └── index.html       # Single-page dashboard (6 tabs + custom panels)
 │   └── model/
 │       ├── metric.go            # MetricPoint type + fingerprint
 │       ├── log.go               # LogEntry, LogLevel types
@@ -486,10 +598,11 @@ watchtower/
 ## Running Tests
 
 ```bash
-go test ./...                        # all packages (~125 tests)
-go test ./internal/tracestore/...    # trace store + API (12 tests)
-go test ./internal/config/...        # config loading (8 tests)
+go test ./...                        # all packages (~140 tests)
+go test ./internal/registry/...      # agent registry + API (15 tests)
+go test ./internal/tracestore/...    # trace store + API (13 tests)
 go test ./internal/probe/...         # endpoint probing (13 tests)
+go test ./internal/config/...        # config loading (8 tests)
 go test ./internal/logstore/...      # log store
 go test ./internal/alert/...         # alert engine
 go test ./internal/wql/...           # WQL language
