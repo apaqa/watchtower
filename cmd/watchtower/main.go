@@ -12,6 +12,7 @@ import (
 
 	"github.com/apaqa/watchtower/internal/agent"
 	"github.com/apaqa/watchtower/internal/alert"
+	"github.com/apaqa/watchtower/internal/auth"
 	"github.com/apaqa/watchtower/internal/config"
 	"github.com/apaqa/watchtower/internal/dashboard"
 	"github.com/apaqa/watchtower/internal/ingest"
@@ -66,6 +67,28 @@ func main() {
 	traceStore := tracestore.New()
 	defer traceStore.Stop()
 
+	// ── 4b. Initialize API key store and pre-load keys from config ───────────
+	keyStore := auth.NewKeyStore()
+	for _, ak := range cfg.APIKeys {
+		if ak.Key == "" || ak.Name == "" {
+			continue
+		}
+		perms := ak.Permissions
+		if len(perms) == 0 {
+			perms = []string{auth.PermRead, auth.PermWrite}
+		}
+		keyStore.Add(auth.APIKey{
+			Key:         ak.Key,
+			Name:        ak.Name,
+			Permissions: perms,
+		})
+	}
+	if keyStore.Count() > 0 {
+		fmt.Printf("Auth: %d API key(s) loaded — all /api/ endpoints are protected\n", keyStore.Count())
+	} else {
+		fmt.Println("Auth: no keys configured — running in open mode")
+	}
+
 	// ── 5b. Initialize agent registry ────────────────────────────────────────
 	agentRegistry := registry.New()
 	defer agentRegistry.Stop()
@@ -101,6 +124,7 @@ func main() {
 	ingestSrv.RegisterProbeManager(probeMgr)
 	ingestSrv.RegisterTraceStore(traceStore)
 	ingestSrv.RegisterAgentRegistry(agentRegistry)
+	ingestSrv.RegisterKeyStore(keyStore)
 	go func() {
 		if err := ingestSrv.Start(); err != nil {
 			// http.ErrServerClosed is expected on clean shutdown
@@ -161,6 +185,9 @@ func main() {
 	fmt.Printf("Probes:  %s/api/v1/probes\n", base)
 	fmt.Printf("Traces:  %s/api/v1/traces\n", base)
 	fmt.Printf("Agents:  %s/api/v1/agents\n", base)
+	fmt.Printf("Auth:    %s/api/v1/auth/keys\n", base)
+	fmt.Printf("Scrape:  %s/metrics  (Prometheus scrape endpoint)\n", base)
+	fmt.Printf("Prom:    %s/api/v1/metrics/prometheus  (Prometheus push)\n", base)
 	fmt.Printf("Panels:  http://localhost:%d/api/v1/dashboard/panels\n", cfg.Server.DashboardPort)
 	fmt.Println("Press Ctrl+C to exit")
 

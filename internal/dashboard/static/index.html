@@ -867,7 +867,19 @@
 
 <header>
   <div class="logo">Watch<span>Tower</span></div>
-  <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+  <div style="margin-left:auto;display:flex;align-items:center;gap:12px">
+    <!-- API Key auth field -->
+    <div id="auth-area" style="display:flex;align-items:center;gap:6px">
+      <span id="auth-icon" style="font-size:1rem;cursor:default" title="Authentication status">🔓</span>
+      <input id="api-key-input" type="password"
+        placeholder="API Key (optional)"
+        style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;color:var(--text);font-size:0.82rem;width:180px;outline:none;"
+        autocomplete="off" />
+      <button id="api-key-save"
+        style="background:var(--accent);color:#0d1117;border:none;border-radius:6px;padding:5px 10px;font-size:0.8rem;font-weight:600;cursor:pointer;">
+        Save
+      </button>
+    </div>
     <div id="status-dot"></div>
     <div id="status-text">Disconnected</div>
   </div>
@@ -1393,7 +1405,7 @@ function renderAlerts(alerts) {
 
 async function fetchAlertHistory() {
   try {
-    const resp = await fetch(`${ALERTS_API}/history`);
+    const resp = await apiFetch(`${ALERTS_API}/history`);
     const history = await resp.json();
     const container = document.getElementById('alert-history-list');
     if (!Array.isArray(history) || history.length === 0) {
@@ -1441,7 +1453,7 @@ document.getElementById('modal-submit').addEventListener('click', async () => {
     webhook_url:    document.getElementById('f-webhook').value.trim(),
   };
   try {
-    const resp = await fetch(`${ALERTS_API}/rules`, {
+    const resp = await apiFetch(`${ALERTS_API}/rules`, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(rule),
     });
@@ -1567,7 +1579,7 @@ async function runQuery() {
   if (!q) return;
   wqlResult.innerHTML = '<span style="color:var(--muted)">Running…</span>';
   try {
-    const resp = await fetch(`${QUERY_URL}?q=${encodeURIComponent(q)}`);
+    const resp = await apiFetch(`${QUERY_URL}?q=${encodeURIComponent(q)}`);
     const data = await resp.json();
     if (data.error) {
       wqlResult.innerHTML = `<span class="result-error">Error: ${escapeHtml(data.error)}</span>`;
@@ -1618,7 +1630,7 @@ const sparklineCharts = {};
 // fetchProbes fetches the probe list and renders cards
 async function fetchProbes() {
   try {
-    const resp = await fetch(PROBES_API);
+    const resp = await apiFetch(PROBES_API);
     if (!resp.ok) return;
     const probes = await resp.json();
     renderProbeList(probes || []);
@@ -1808,7 +1820,7 @@ document.getElementById('probe-modal-submit').addEventListener('click', async ()
     timeout_ms:      parseInt(document.getElementById('pf-timeout').value, 10),
   };
   try {
-    const resp = await fetch(PROBES_API, {
+    const resp = await apiFetch(PROBES_API, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(cfg),
@@ -1855,7 +1867,7 @@ async function fetchTraces() {
   if (minDur)   url += '&min_duration=' + encodeURIComponent(minDur);
 
   try {
-    const resp = await fetch(url);
+    const resp = await apiFetch(url);
     if (!resp.ok) return;
     const traces = await resp.json();
     renderTraceList(traces || []);
@@ -1940,7 +1952,7 @@ async function loadWaterfall(item, traceId) {
   wfEl.innerHTML = '<span style="color:var(--muted);font-size:0.8rem;padding:4px 0;display:block">Loading…</span>';
 
   try {
-    const resp = await fetch(TRACES_API + '/' + encodeURIComponent(traceId));
+    const resp = await apiFetch(TRACES_API + '/' + encodeURIComponent(traceId));
     if (!resp.ok) {
       wfEl.innerHTML = '<span style="color:var(--red);font-size:0.8rem">Failed to load trace</span>';
       return;
@@ -2037,7 +2049,7 @@ const AGENTS_API = 'http://localhost:9090/api/v1/agents';
 
 async function fetchAgents() {
   try {
-    const resp = await fetch(AGENTS_API);
+    const resp = await apiFetch(AGENTS_API);
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const agents = await resp.json();
     renderAgents(agents);
@@ -2101,7 +2113,7 @@ const panelTimers = {};
 
 async function fetchCustomPanels() {
   try {
-    const resp = await fetch(PANELS_API);
+    const resp = await apiFetch(PANELS_API);
     if (!resp.ok) return;
     const panels = await resp.json();
     renderCustomPanels(panels);
@@ -2141,7 +2153,7 @@ async function fetchPanelValue(panelId, query) {
   const el = document.getElementById('cpval-' + panelId);
   if (!el) return;
   try {
-    const resp = await fetch('http://localhost:9090/api/v1/query?q=' + encodeURIComponent(query));
+    const resp = await apiFetch('http://localhost:9090/api/v1/query?q=' + encodeURIComponent(query));
     if (!resp.ok) { el.textContent = 'ERR'; el.style.color = 'var(--red)'; return; }
     const result = await resp.json();
     if (result.type === 'scalar') {
@@ -2157,7 +2169,7 @@ async function fetchPanelValue(panelId, query) {
 
 async function deletePanel(id) {
   try {
-    await fetch(PANELS_API + '/' + encodeURIComponent(id), { method: 'DELETE' });
+    await apiFetch(PANELS_API + '/' + encodeURIComponent(id), { method: 'DELETE' });
     fetchCustomPanels();
   } catch(_) {}
 }
@@ -2188,7 +2200,7 @@ document.getElementById('panel-modal-submit').addEventListener('click', async ()
   }
 
   try {
-    const resp = await fetch(PANELS_API, {
+    const resp = await apiFetch(PANELS_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, title, wql_query: query, panel_type: type, refresh_interval: refresh, width: 1 }),
@@ -2212,6 +2224,78 @@ document.getElementById('panel-modal-submit').addEventListener('click', async ()
 
 fetchCustomPanels();
 setInterval(fetchCustomPanels, 60000);
+
+// ── API Key Authentication ─────────────────────────────────────────────────────
+// The API key is stored in localStorage and sent with all /api/ requests.
+// If no keys are configured on the server, the server runs in open mode and
+// any key value (or no key) is accepted.
+
+const API_KEY_STORAGE = 'watchtower_api_key';
+
+// getApiKey returns the current API key from localStorage (or empty string)
+function getApiKey() {
+  return localStorage.getItem(API_KEY_STORAGE) || '';
+}
+
+// setApiKey saves the key and updates the UI icon
+function setApiKey(key) {
+  if (key) {
+    localStorage.setItem(API_KEY_STORAGE, key);
+  } else {
+    localStorage.removeItem(API_KEY_STORAGE);
+  }
+  updateAuthIcon();
+}
+
+function updateAuthIcon() {
+  const icon = document.getElementById('auth-icon');
+  const key = getApiKey();
+  if (key) {
+    icon.textContent = '🔒';
+    icon.title = 'API Key configured — requests include X-API-Key header';
+  } else {
+    icon.textContent = '🔓';
+    icon.title = 'No API Key — server may be in open mode';
+  }
+}
+
+// apiFetch wraps fetch() and injects the X-API-Key header on /api/ requests
+function apiFetch(url, options) {
+  options = options || {};
+  const key = getApiKey();
+  if (key && url.includes('/api/')) {
+    options.headers = Object.assign({ 'X-API-Key': key }, options.headers || {});
+  }
+  return fetch(url, options);
+}
+
+// Restore saved key from localStorage on page load
+const savedKey = getApiKey();
+if (savedKey) {
+  document.getElementById('api-key-input').value = '••••••••'; // masked display
+}
+updateAuthIcon();
+
+document.getElementById('api-key-save').addEventListener('click', () => {
+  const input = document.getElementById('api-key-input');
+  const val = input.value.trim();
+  // If the user typed the placeholder mask, keep existing key
+  if (val === '••••••••') return;
+  setApiKey(val);
+  if (val) {
+    input.value = '••••••••';
+  } else {
+    input.value = '';
+  }
+});
+
+document.getElementById('api-key-input').addEventListener('keydown', e => {
+  // Clear masked placeholder on first keystroke
+  if (e.key !== 'Enter' && document.getElementById('api-key-input').value === '••••••••') {
+    document.getElementById('api-key-input').value = '';
+  }
+  if (e.key === 'Enter') document.getElementById('api-key-save').click();
+});
 </script>
 </body>
 </html>

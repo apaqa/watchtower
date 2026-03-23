@@ -44,3 +44,13 @@ alerts:
     threshold: 90
     duration: 5m
     severity: critical
+
+# API 密钥（可选）：取消注释后，所有 /api/ 端点将要求有效密钥
+# 密钥可通过 POST /api/v1/auth/keys 动态创建（需要 admin 权限）
+# api_keys:
+#   - name: admin-key
+#     key: "changeme-use-a-random-64-char-hex-string"
+#     permissions: [admin]
+#   - name: readonly
+#     key: "another-secret-key"
+#     permissions: [read]

@@ -79,6 +79,21 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - Stores last 100 results per probe; calculates uptime percentage
 - Runtime add/remove via REST API
 
+### Prometheus Compatibility
+- **Ingest**: `POST /api/v1/metrics/prometheus` accepts the Prometheus text exposition format; all metric types (counter, gauge, histogram, summary) are stored as regular time-series
+- **Scrape**: `GET /metrics` exports all TSDB metrics in Prometheus text format so WatchTower itself can be scraped by any Prometheus instance
+- Comment lines (`# HELP`, `# TYPE`) are silently skipped; invalid lines are skipped without aborting the batch
+- Labels, escaped label values, timestamps (optional, milliseconds), and special values (`+Inf`, `-Inf`, `NaN`) are all supported
+
+### API Key Authentication
+- **Open mode**: if no keys are configured, all `/api/` endpoints are publicly accessible
+- **Authenticated mode**: once any key is added (via config or API), every `/api/` request must include `X-API-Key: <key>` header (or `?api_key=<key>` query param)
+- Permissions: `read` · `write` · `admin` (admin implies read + write)
+- `/metrics` scrape endpoint and the dashboard static files are always public
+- Keys can be pre-loaded from `watchtower.yaml` under `api_keys:` or created dynamically via the key management API
+- Generated keys are 64-character random hex strings; only shown once at creation time
+- The dashboard header includes an API Key input that stores the key in `localStorage` and injects it into all API requests
+
 ### Distributed Tracing
 - In-memory trace store: up to 1 000 traces, 1-hour retention, ring-buffer eviction
 - Thread-safe with separate index by `trace_id` and by `service_name`
@@ -150,6 +165,9 @@ go build -o watchtower ./cmd/watchtower
 | Probe API | http://localhost:9090/api/v1/probes |
 | Trace API | http://localhost:9090/api/v1/traces |
 | Agent Registry | http://localhost:9090/api/v1/agents |
+| Auth / Key Mgmt | http://localhost:9090/api/v1/auth/keys |
+| Prometheus Ingest | http://localhost:9090/api/v1/metrics/prometheus |
+| Prometheus Scrape | http://localhost:9090/metrics |
 | Custom Panels API | http://localhost:8080/api/v1/dashboard/panels |
 
 ## Configuration
@@ -420,6 +438,75 @@ Span schema:
 
 `status` is `"ok"` or `"error"`. `parent_span_id` is omitted (or empty string) for root spans.
 
+### Prometheus Compatibility
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/metrics/prometheus` | Ingest metrics in Prometheus text format |
+| `GET`  | `/metrics` | Scrape endpoint — exports all TSDB metrics in Prometheus format |
+
+```bash
+# Push from a Prometheus exporter / your own app
+curl -X POST http://localhost:9090/api/v1/metrics/prometheus \
+  -H "Content-Type: text/plain" \
+  --data-binary '
+# HELP my_app_requests_total Total requests
+# TYPE my_app_requests_total counter
+my_app_requests_total{method="GET",status="200"} 1027 1395066363000
+my_app_requests_total{method="POST",status="500"} 3 1395066363000
+my_app_latency_seconds{quantile="0.99"} 0.034
+'
+
+# Prometheus scrape config to pull from WatchTower
+# scrape_configs:
+#   - job_name: watchtower
+#     static_configs:
+#       - targets: ['localhost:9090']
+```
+
+### API Key Authentication
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST`   | `/api/v1/auth/keys` | Create a new API key (admin required when keys exist) |
+| `GET`    | `/api/v1/auth/keys` | List all keys (masked — last 4 chars only) |
+| `DELETE` | `/api/v1/auth/keys/{name}` | Revoke a key by name |
+
+```bash
+# Create an admin key (open mode — no existing keys)
+curl -X POST http://localhost:9090/api/v1/auth/keys \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-admin", "permissions": ["admin"]}'
+# Returns: {"name":"my-admin","key":"<64-char-hex>","permissions":["admin"],...}
+# Save the key — it is only shown once.
+
+# Use the key for subsequent requests
+curl http://localhost:9090/api/v1/agents \
+  -H "X-API-Key: <64-char-hex>"
+
+# Create a read-only key (requires admin key)
+curl -X POST http://localhost:9090/api/v1/auth/keys \
+  -H "X-API-Key: <admin-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "readonly", "permissions": ["read"]}'
+
+# Revoke a key
+curl -X DELETE http://localhost:9090/api/v1/auth/keys/readonly \
+  -H "X-API-Key: <admin-key>"
+```
+
+Pre-load keys in `watchtower.yaml`:
+
+```yaml
+api_keys:
+  - name: admin-key
+    key: "your-64-char-random-hex-string"
+    permissions: [admin]
+  - name: ci-readonly
+    key: "another-random-key"
+    permissions: [read]
+```
+
 ### Agent Registry
 
 | Method | Path | Description |
@@ -572,13 +659,19 @@ watchtower/
 │   │   ├── store.go             # In-memory trace store, ring-buffer eviction, 1h retention
 │   │   ├── api.go               # Trace HTTP API (ingest, list, get)
 │   │   └── store_test.go
+│   ├── auth/
+│   │   ├── auth.go              # APIKey, KeyStore, Middleware, GenerateKey
+│   │   ├── api.go               # Key management HTTP API (/api/v1/auth/keys/...)
+│   │   └── auth_test.go
 │   ├── registry/
 │   │   ├── registry.go          # Agent registry: thread-safe map, offline detection
 │   │   ├── api.go               # Agent CRUD HTTP API (/api/v1/agents/...)
 │   │   └── registry_test.go
 │   ├── ingest/
-│   │   ├── server.go            # Ingest HTTP server
+│   │   ├── server.go            # Ingest HTTP server (implements http.Handler for auth)
+│   │   ├── prometheus.go        # Prometheus text format parser + scrape endpoint
 │   │   ├── server_test.go
+│   │   ├── prometheus_test.go
 │   │   └── log_api_test.go
 │   ├── dashboard/
 │   │   ├── dashboard.go         # WebSocket server + static file handler
@@ -598,7 +691,9 @@ watchtower/
 ## Running Tests
 
 ```bash
-go test ./...                        # all packages (~140 tests)
+go test ./...                        # all packages (~168 tests)
+go test ./internal/auth/...          # auth middleware + key management (19 tests)
+go test ./internal/ingest/...        # ingest server + Prometheus parser (12 new)
 go test ./internal/registry/...      # agent registry + API (15 tests)
 go test ./internal/tracestore/...    # trace store + API (13 tests)
 go test ./internal/probe/...         # endpoint probing (13 tests)

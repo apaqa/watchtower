@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/apaqa/watchtower/internal/alert"
+	"github.com/apaqa/watchtower/internal/auth"
 	"github.com/apaqa/watchtower/internal/logstore"
 	"github.com/apaqa/watchtower/internal/model"
 	"github.com/apaqa/watchtower/internal/probe"
@@ -23,6 +24,7 @@ import (
 type Server struct {
 	db       *tsdb.TSDB
 	logStore *logstore.Store // 可选的日志存储；由 RegisterLogStore 注入
+	keyStore *auth.KeyStore  // 可选的 API 密钥存储；nil 表示开放模式
 	mux      *http.ServeMux  // 保留对路由器的引用，以便后续注册路由
 	httpSrv  *http.Server
 	listener net.Listener
@@ -37,6 +39,10 @@ func New(addr string, db *tsdb.TSDB) (*Server, error) {
 	mux.HandleFunc("/api/v1/metrics", s.handleMetrics)
 	// 注册 GET /api/v1/query 路由（WQL 查询接口）
 	mux.HandleFunc("/api/v1/query", s.handleQuery)
+	// 注册 POST /api/v1/metrics/prometheus 路由（Prometheus 文本格式摄入）
+	mux.HandleFunc("/api/v1/metrics/prometheus", s.handlePrometheusIngest)
+	// 注册 GET /metrics 路由（Prometheus 抓取端点；始终公开）
+	mux.HandleFunc("/metrics", s.handlePrometheusScrape)
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -45,11 +51,23 @@ func New(addr string, db *tsdb.TSDB) (*Server, error) {
 
 	s.listener = ln
 	s.httpSrv = &http.Server{
-		Handler:      mux,
+		// Server 实现 http.Handler 接口，在 ServeHTTP 中执行认证检查
+		Handler:      s,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
 	return s, nil
+}
+
+// ServeHTTP 实现 http.Handler，在委托给 mux 之前执行 API 密钥认证检查
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	auth.Middleware(s.keyStore, s.mux).ServeHTTP(w, r)
+}
+
+// RegisterKeyStore 注入 API 密钥存储，启用认证（必须在 Start 之前调用）
+func (s *Server) RegisterKeyStore(ks *auth.KeyStore) {
+	s.keyStore = ks
+	auth.RegisterRoutes(s.mux, ks)
 }
 
 // Addr 返回实际监听地址（用于测试时获取随机端口）

@@ -15,6 +15,7 @@ type Config struct {
 	Retention RetentionConfig  `yaml:"retention"`
 	Endpoints []EndpointConfig `yaml:"endpoints"`
 	Alerts    []AlertConfig    `yaml:"alerts"`
+	APIKeys   []APIKeyConfig   `yaml:"api_keys"`
 }
 
 // ServerConfig 控制 HTTP 服务监听端口
@@ -44,6 +45,13 @@ type EndpointConfig struct {
 	IntervalSeconds int               `yaml:"interval_seconds"` // 探测间隔秒数，默认 30
 	TimeoutMs       int               `yaml:"timeout_ms"`       // 超时毫秒数，默认 10000
 	Headers         map[string]string `yaml:"headers"`          // 附加请求头（可选）
+}
+
+// APIKeyConfig 描述一个预配置的 API 密钥
+type APIKeyConfig struct {
+	Name        string   `yaml:"name"`        // 人类可读标识
+	Key         string   `yaml:"key"`         // 密钥明文（建议在生产中使用环境变量替换）
+	Permissions []string `yaml:"permissions"` // "read" | "write" | "admin"
 }
 
 // AlertConfig 描述一条预定义告警规则
