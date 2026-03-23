@@ -173,6 +173,28 @@ func (s *Store) GetTrace(traceID string) (*model.Trace, bool) {
 	return &cp, true
 }
 
+// AllTraces 返回当前所有 trace 的深拷贝切片，供服务地图分析器使用。
+func (s *Store) AllTraces() []*model.Trace {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*model.Trace, 0, len(s.order))
+	for _, id := range s.order {
+		t, ok := s.traces[id]
+		if !ok {
+			continue
+		}
+		cp := *t
+		cp.Spans = make([]*model.Span, len(t.Spans))
+		for i, sp := range t.Spans {
+			spCopy := *sp
+			cp.Spans[i] = &spCopy
+		}
+		cp.ServiceNames = append([]string(nil), t.ServiceNames...)
+		out = append(out, &cp)
+	}
+	return out
+}
+
 // TotalCount 返回当前存储的 trace 数量。
 func (s *Store) TotalCount() int {
 	s.mu.RLock()

@@ -16,6 +16,8 @@ import (
 	"github.com/apaqa/watchtower/internal/notify"
 	"github.com/apaqa/watchtower/internal/probe"
 	"github.com/apaqa/watchtower/internal/registry"
+	"github.com/apaqa/watchtower/internal/servicemap"
+	"github.com/apaqa/watchtower/internal/slo"
 	"github.com/apaqa/watchtower/internal/tracestore"
 	"github.com/apaqa/watchtower/internal/tsdb"
 	"github.com/apaqa/watchtower/internal/wql"
@@ -100,6 +102,16 @@ func (s *Server) RegisterAgentRegistry(reg *registry.Registry) {
 // RegisterNotifyRouter 注册通知历史 API 路由（必须在 Start 之前调用）
 func (s *Server) RegisterNotifyRouter(r *notify.Router) {
 	notify.RegisterRoutes(s.mux, r.History())
+}
+
+// RegisterServiceMapBuilder 注册服务地图 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterServiceMapBuilder(b *servicemap.Builder) {
+	servicemap.RegisterRoutes(s.mux, b)
+}
+
+// RegisterSLOStore 注册 SLO CRUD API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterSLOStore(store *slo.Store) {
+	slo.RegisterRoutes(s.mux, store)
 }
 
 // RegisterLogStore 注入日志存储并注册日志 API 路由（必须在 Start 之前调用）

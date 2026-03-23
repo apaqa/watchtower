@@ -853,6 +853,132 @@
     /* Add panel modal */
     #panel-modal .modal { width: min(480px, 95vw); }
 
+    /* ── Service Map tab ── */
+    #tab-servicemap { padding: 24px; }
+    .svcmap-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .svcmap-panel-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    #svcmap-svg {
+      width: 100%;
+      height: 520px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: block;
+    }
+    .svcmap-legend {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .legend-dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 2px;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+
+    /* ── SLO panel ── */
+    .slo-section-header {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .slo-section-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    #add-slo-btn {
+      background: var(--accent);
+      color: #0d1117;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: opacity 0.15s;
+    }
+    #add-slo-btn:hover { opacity: 0.85; }
+    .slo-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+    }
+    .slo-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .slo-name { font-weight: 700; font-size: 0.95rem; }
+    .slo-type { font-size: 0.75rem; color: var(--muted); }
+    .slo-target { font-size: 0.8rem; color: var(--muted); margin-left: auto; }
+    .slo-status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .slo-dot-healthy  { background: var(--green); }
+    .slo-dot-warning  { background: var(--yellow); }
+    .slo-dot-critical { background: var(--red); }
+    .slo-metrics {
+      display: flex;
+      gap: 20px;
+      font-size: 0.85rem;
+    }
+    .slo-metric-label { color: var(--muted); font-size: 0.75rem; margin-bottom: 2px; }
+    .slo-metric-value { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .slo-budget-bar-wrap {
+      background: var(--border);
+      border-radius: 4px;
+      height: 6px;
+      width: 100%;
+      overflow: hidden;
+    }
+    .slo-budget-bar { height: 100%; border-radius: 4px; transition: width 0.3s; }
+    .slo-delete {
+      position: absolute;
+      top: 10px; right: 12px;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .slo-delete:hover { color: var(--red); background: rgba(248,81,73,0.1); }
+
     /* ── Light theme ── */
     :root.light {
       --bg:      #ffffff;
@@ -972,6 +1098,7 @@
   <button class="tab-btn" data-tab="uptime">Endpoints</button>
   <button class="tab-btn" data-tab="traces">Traces</button>
   <button class="tab-btn" data-tab="agents">Agents</button>
+  <button class="tab-btn" data-tab="servicemap">Service Map</button>
 </nav>
 
 <!-- ── Metrics tab ──────────────────────────────────────────────────────── -->
@@ -1037,6 +1164,14 @@
 
   <!-- Custom panel cards injected here by JS -->
   <div id="custom-panels-container" style="display:contents"></div>
+
+  <!-- SLO Status section -->
+  <div class="slo-section-header">
+    <span class="slo-section-label">SLO Status</span>
+    <button id="add-slo-btn">+ Add SLO</button>
+  </div>
+  <!-- SLO cards injected here by JS -->
+  <div id="slo-container" style="display:contents"></div>
 
 </div><!-- /#tab-metrics -->
 
@@ -1272,6 +1407,79 @@
           <tr><td colspan="6" id="agent-empty">No agents registered yet</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── Service Map tab ───────────────────────────────────────────────────── -->
+<div id="tab-servicemap" class="tab-panel">
+  <div class="svcmap-panel">
+    <div class="svcmap-panel-title">
+      Service Dependency Map
+      <span id="svcmap-summary" style="font-size:0.8rem;font-weight:400;color:var(--muted)"></span>
+      <button id="svcmap-refresh-btn" style="margin-left:auto;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.8rem;">↻ Refresh</button>
+    </div>
+    <svg id="svcmap-svg" viewBox="0 0 900 520" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#8b949e" />
+        </marker>
+        <marker id="arrow-error" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#f85149" />
+        </marker>
+      </defs>
+      <g id="svcmap-edges"></g>
+      <g id="svcmap-nodes"></g>
+      <text x="450" y="270" text-anchor="middle" fill="#8b949e" font-size="14" id="svcmap-empty">No trace data yet — traces generate the service map automatically</text>
+    </svg>
+    <div class="svcmap-legend">
+      <span><span class="legend-dot" style="background:#58a6ff"></span>API</span>
+      <span><span class="legend-dot" style="background:#3fb950"></span>Database</span>
+      <span><span class="legend-dot" style="background:#d29922"></span>Cache</span>
+      <span><span class="legend-dot" style="background:#bc8cff"></span>Queue</span>
+      <span><span class="legend-dot" style="background:#8b949e"></span>External</span>
+      <span style="margin-left:8px"><span class="legend-dot" style="background:transparent;border:2px solid #f85149;width:8px;height:8px"></span> Error rate &gt;5%</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── SLO modal ─────────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="slo-modal">
+  <div class="modal">
+    <h2>Add SLO</h2>
+    <div class="form-row">
+      <label>Name (unique)</label>
+      <input id="sf-name" type="text" placeholder="api-availability" />
+    </div>
+    <div class="form-row-inline">
+      <div class="form-row">
+        <label>Metric Type</label>
+        <select id="sf-type">
+          <option value="availability">Availability</option>
+          <option value="latency">Latency</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Target %</label>
+        <input id="sf-target" type="number" value="99.9" min="0.01" max="99.99" step="0.01" />
+      </div>
+    </div>
+    <div class="form-row">
+      <label>WQL Query (must return 0–100)</label>
+      <input id="sf-query" type="text" placeholder="avg(availability_percent[7d])" />
+    </div>
+    <div class="form-row">
+      <label>Window</label>
+      <select id="sf-window">
+        <option value="1d">1 day</option>
+        <option value="7d">7 days</option>
+        <option value="30d" selected>30 days</option>
+      </select>
+    </div>
+    <div id="slo-modal-error" style="color:var(--red);font-size:0.82rem;display:none"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="slo-modal-cancel">Cancel</button>
+      <button class="btn-primary" id="slo-modal-submit">Add</button>
     </div>
   </div>
 </div>
@@ -2456,6 +2664,147 @@ ws.onmessage = (evt) => {
   catch(e) { console.warn('message parse failed', e); }
 };
 
+// ── Service Map ────────────────────────────────────────────────────────────────
+const SVCMAP_API = 'http://localhost:9090/api/v1/servicemap';
+
+// Service type → fill color
+const SVCMAP_COLORS = {
+  api:      '#58a6ff',
+  database: '#3fb950',
+  cache:    '#d29922',
+  queue:    '#bc8cff',
+  external: '#8b949e',
+};
+
+async function fetchServiceMap() {
+  try {
+    const resp = await apiFetch(SVCMAP_API);
+    if (!resp.ok) return;
+    const sm = await resp.json();
+    renderServiceMap(sm);
+  } catch(_) {}
+}
+
+function renderServiceMap(sm) {
+  const nodes = sm.nodes || [];
+  const edges = sm.edges || [];
+  const emptyEl = document.getElementById('svcmap-empty');
+  const summaryEl = document.getElementById('svcmap-summary');
+
+  if (nodes.length === 0) {
+    if (emptyEl) emptyEl.style.display = 'block';
+    summaryEl.textContent = '';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+  summaryEl.textContent = `${nodes.length} service${nodes.length !== 1 ? 's' : ''}, ${edges.length} edge${edges.length !== 1 ? 's' : ''}`;
+
+  const W = 900, H = 520;
+  const cx = W / 2, cy = H / 2;
+  // Node dimensions
+  const NW = 130, NH = 46;
+  // Circular layout
+  const r = Math.min(cx - NW, cy - NH - 20) * 0.85;
+
+  // Assign positions
+  const posMap = {};
+  nodes.forEach((node, i) => {
+    const angle = (i / nodes.length) * 2 * Math.PI - Math.PI / 2;
+    posMap[node.name] = { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
+  });
+
+  // Build edge index for quick lookup
+  const edgeMap = {};
+  edges.forEach(e => { edgeMap[e.from_service + '→' + e.to_service] = e; });
+
+  // Render edges
+  const edgesG = document.getElementById('svcmap-edges');
+  edgesG.innerHTML = '';
+  edges.forEach(e => {
+    const src = posMap[e.from_service], dst = posMap[e.to_service];
+    if (!src || !dst) return;
+    const isError = e.error_rate > 0.05;
+    const stroke = isError ? '#f85149' : '#8b949e';
+    const marker = isError ? 'url(#arrow-error)' : 'url(#arrow)';
+
+    // Offset endpoint so arrow stops at node border
+    const dx = dst.x - src.x, dy = dst.y - src.y;
+    const len = Math.sqrt(dx*dx + dy*dy) || 1;
+    const ex = dst.x - (dx/len) * (NW/2 + 4);
+    const ey = dst.y - (dy/len) * (NH/2 + 4);
+    const sx = src.x + (dx/len) * (NW/2 + 2);
+    const sy = src.y + (dy/len) * (NH/2 + 2);
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', sx); line.setAttribute('y1', sy);
+    line.setAttribute('x2', ex); line.setAttribute('y2', ey);
+    line.setAttribute('stroke', stroke);
+    line.setAttribute('stroke-width', '1.5');
+    line.setAttribute('marker-end', marker);
+    edgesG.appendChild(line);
+
+    // Edge label: req count + error rate
+    const mx = (sx + ex) / 2, my = (sy + ey) / 2;
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.setAttribute('x', mx); label.setAttribute('y', my - 4);
+    label.setAttribute('text-anchor', 'middle');
+    label.setAttribute('font-size', '10');
+    label.setAttribute('fill', stroke);
+    label.textContent = `${e.request_count}req` + (e.error_rate > 0 ? ` ${(e.error_rate*100).toFixed(0)}%err` : '');
+    edgesG.appendChild(label);
+  });
+
+  // Render nodes
+  const nodesG = document.getElementById('svcmap-nodes');
+  nodesG.innerHTML = '';
+  nodes.forEach(node => {
+    const pos = posMap[node.name];
+    if (!pos) return;
+    const fill = SVCMAP_COLORS[node.type] || SVCMAP_COLORS.api;
+    const hasHighError = node.request_count > 0 && (node.error_count / node.request_count) > 0.05;
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('transform', `translate(${pos.x - NW/2},${pos.y - NH/2})`);
+
+    // Background rect
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('width', NW); rect.setAttribute('height', NH);
+    rect.setAttribute('rx', '8'); rect.setAttribute('ry', '8');
+    rect.setAttribute('fill', fill + '22'); // translucent fill
+    rect.setAttribute('stroke', hasHighError ? '#f85149' : fill);
+    rect.setAttribute('stroke-width', hasHighError ? '2.5' : '1.5');
+    g.appendChild(rect);
+
+    // Service name
+    const name = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    name.setAttribute('x', NW/2); name.setAttribute('y', '17');
+    name.setAttribute('text-anchor', 'middle');
+    name.setAttribute('font-size', '12');
+    name.setAttribute('font-weight', '600');
+    name.setAttribute('fill', fill);
+    name.textContent = node.name.length > 14 ? node.name.slice(0, 13) + '…' : node.name;
+    g.appendChild(name);
+
+    // Latency
+    const lat = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    lat.setAttribute('x', NW/2); lat.setAttribute('y', '32');
+    lat.setAttribute('text-anchor', 'middle');
+    lat.setAttribute('font-size', '10');
+    lat.setAttribute('fill', '#8b949e');
+    lat.textContent = node.avg_latency_ms > 0 ? `${node.avg_latency_ms.toFixed(0)}ms · ${node.request_count}req` : `${node.request_count}req`;
+    g.appendChild(lat);
+
+    nodesG.appendChild(g);
+  });
+}
+
+document.getElementById('svcmap-refresh-btn').addEventListener('click', fetchServiceMap);
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  if (btn.dataset.tab === 'servicemap') btn.addEventListener('click', fetchServiceMap);
+});
+fetchServiceMap();
+setInterval(fetchServiceMap, 10000);
+
 // ── Notification History ───────────────────────────────────────────────────────
 const NOTIFY_API = 'http://localhost:9090/api/v1/notifications';
 
@@ -2503,6 +2852,122 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
 fetchNotifications();
 setInterval(fetchNotifications, 30000);
+
+// ── SLO Status ─────────────────────────────────────────────────────────────────
+const SLOS_API = 'http://localhost:9090/api/v1/slos';
+
+async function fetchSLOs() {
+  try {
+    const resp = await apiFetch(SLOS_API);
+    if (!resp.ok) return;
+    const statuses = await resp.json();
+    renderSLOs(statuses || []);
+  } catch(_) {}
+}
+
+function renderSLOs(statuses) {
+  const container = document.getElementById('slo-container');
+  // Clear existing timers-free cards
+  container.innerHTML = '';
+  if (!statuses || statuses.length === 0) return;
+
+  statuses.forEach(st => {
+    const slo = st.slo;
+    const sli = st.current_sli;
+    const budgetPct = st.error_budget_pct;
+    const healthy = st.healthy;
+
+    // Determine health color
+    let dotCls = 'slo-dot-healthy';
+    let barColor = 'var(--green)';
+    if (!healthy) { dotCls = 'slo-dot-critical'; barColor = 'var(--red)'; }
+    else if (budgetPct < 20) { dotCls = 'slo-dot-warning'; barColor = 'var(--yellow)'; }
+
+    const card = document.createElement('div');
+    card.className = 'slo-card';
+    card.innerHTML = `
+      <button class="slo-delete" data-name="${escapeHtml(slo.name)}" title="Delete SLO">&times;</button>
+      <div class="slo-card-header">
+        <span class="slo-status-dot ${dotCls}"></span>
+        <span class="slo-name">${escapeHtml(slo.name)}</span>
+        <span class="slo-type">${escapeHtml(slo.metric_type)}</span>
+        <span class="slo-target">${slo.target_percent}% target</span>
+      </div>
+      <div class="slo-metrics">
+        <div>
+          <div class="slo-metric-label">Current SLI</div>
+          <div class="slo-metric-value" style="color:${healthy?'var(--green)':'var(--red)'}">${sli.toFixed(2)}%</div>
+        </div>
+        <div>
+          <div class="slo-metric-label">Error Budget</div>
+          <div class="slo-metric-value">${budgetPct.toFixed(1)}% remaining</div>
+        </div>
+        <div>
+          <div class="slo-metric-label">Window</div>
+          <div class="slo-metric-value" style="color:var(--muted)">${escapeHtml(slo.window)}</div>
+        </div>
+      </div>
+      <div>
+        <div class="slo-budget-bar-wrap">
+          <div class="slo-budget-bar" style="width:${budgetPct.toFixed(1)}%;background:${barColor}"></div>
+        </div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:3px">${st.error_budget_consumed.toFixed(1)} / ${st.error_budget_total.toFixed(1)} min consumed</div>
+      </div>`;
+    card.querySelector('.slo-delete').addEventListener('click', () => deleteSLO(slo.name));
+    container.appendChild(card);
+  });
+}
+
+async function deleteSLO(name) {
+  try {
+    await apiFetch(SLOS_API + '/' + encodeURIComponent(name), { method: 'DELETE' });
+    fetchSLOs();
+  } catch(_) {}
+}
+
+// SLO modal
+const sloModal = document.getElementById('slo-modal');
+document.getElementById('add-slo-btn').addEventListener('click', () => {
+  sloModal.classList.add('open');
+  document.getElementById('slo-modal-error').style.display = 'none';
+});
+document.getElementById('slo-modal-cancel').addEventListener('click', () => sloModal.classList.remove('open'));
+sloModal.addEventListener('click', e => { if (e.target === sloModal) sloModal.classList.remove('open'); });
+
+document.getElementById('slo-modal-submit').addEventListener('click', async () => {
+  const errEl = document.getElementById('slo-modal-error');
+  errEl.style.display = 'none';
+  const slo = {
+    name:           document.getElementById('sf-name').value.trim(),
+    metric_type:    document.getElementById('sf-type').value,
+    target_percent: parseFloat(document.getElementById('sf-target').value),
+    wql_query:      document.getElementById('sf-query').value.trim(),
+    window:         document.getElementById('sf-window').value,
+  };
+  try {
+    const resp = await apiFetch(SLOS_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(slo),
+    });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      errEl.textContent = body.error || 'Failed to add SLO.';
+      errEl.style.display = 'block';
+      return;
+    }
+    sloModal.classList.remove('open');
+    document.getElementById('sf-name').value = '';
+    document.getElementById('sf-query').value = '';
+    fetchSLOs();
+  } catch(e) {
+    errEl.textContent = 'Network error: ' + String(e);
+    errEl.style.display = 'block';
+  }
+});
+
+fetchSLOs();
+setInterval(fetchSLOs, 30000);
 </script>
 </body>
 </html>

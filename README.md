@@ -110,6 +110,23 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - Full CRUD REST API: list, get, delete agents
 - System agent now embeds `agent_id` label on every metric data point
 
+### Service Map
+- Analyzes all in-memory traces to build a live service dependency graph
+- **Nodes**: each unique `service_name` seen across spans, typed automatically by keyword matching (api/database/cache/queue/external)
+- **Edges**: directed, from parent span's service to child span's service; only cross-service calls appear as edges
+- Per-node metrics: `request_count`, `error_count`, `avg_latency_ms`
+- Per-edge metrics: `request_count`, `error_rate` (0–1), `avg_latency_ms`
+- `GET /api/v1/servicemap` returns `{ nodes: [...], edges: [...] }` as JSON
+- Dashboard **Service Map** tab: SVG visualization with circular layout, color-coded by type, red border on high-error nodes (>5%), auto-refreshes every 10 seconds
+
+### SLO / SLI Tracking
+- Define SLOs with a name, target percentage (0–100 exclusive), WQL query, metric type, and window (1d/7d/30d)
+- **SLI**: result of the WQL query clamped to 0–100; scalar, bool (`true=100`, `false=0`), or vector average
+- **Error budget**: `(1 − target%) × window_minutes` total; `(1 − sli%) × window_minutes` consumed
+- `GET /api/v1/slos` returns all SLOs with current SLI, budget total, budget consumed, budget remaining %
+- `POST /api/v1/slos` creates an SLO; `DELETE /api/v1/slos/{name}` removes it
+- Dashboard **SLO Status** section in Metrics tab: progress bar per SLO (green/yellow/red), "+ Add SLO" modal
+
 ### Multi-Channel Notifications
 - Five channel types: **Console** (stdout), **Webhook** (generic JSON POST), **Slack** (attachments with color-coded severity), **Discord** (embeds), **Email** (net/smtp with PLAIN auth)
 - `notify.Router` routes each `Notification` to all channels whose severity filter matches; dispatches in goroutines so notifications never block the alert evaluation loop
@@ -129,7 +146,7 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 ### Dashboard
 - Dark-theme single-page app served at `:8080`
 - Live Chart.js line charts via WebSocket push (5-second interval)
-- **Six tabs**: **Metrics** · **Logs** · **Alerts** · **Endpoints** · **Traces** · **Agents**
+- **Seven tabs**: **Metrics** · **Logs** · **Alerts** · **Endpoints** · **Traces** · **Agents** · **Service Map**
 - WQL query box with instant results
 - Log viewer with full-text/regex search and level filter
 - Alert manager with rule creation modal and state history
@@ -663,6 +680,69 @@ notifications:
       smtp_username: alerts@example.com
       smtp_password: secret
 ```
+
+### Service Map
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/servicemap` | Build and return service dependency graph from all traces |
+
+```bash
+curl http://localhost:9090/api/v1/servicemap
+```
+
+Response:
+```json
+{
+  "nodes": [
+    { "name": "api-gateway", "type": "api", "request_count": 42, "error_count": 0, "avg_latency_ms": 24.5 },
+    { "name": "user-postgres", "type": "database", "request_count": 38, "error_count": 1, "avg_latency_ms": 8.2 }
+  ],
+  "edges": [
+    { "from_service": "api-gateway", "to_service": "user-postgres", "request_count": 38, "error_rate": 0.026, "avg_latency_ms": 8.2 }
+  ]
+}
+```
+
+Service type is inferred from the name: keywords like `postgres`/`mysql`/`mongo` → `database`, `redis`/`cache` → `cache`, `kafka`/`queue` → `queue`, `external` → `external`, anything else → `api`.
+
+### SLO / SLI Tracking
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`    | `/api/v1/slos` | List all SLOs with current SLI and error budget |
+| `POST`   | `/api/v1/slos` | Create an SLO |
+| `DELETE` | `/api/v1/slos/{name}` | Remove an SLO |
+
+```bash
+# Create an availability SLO
+curl -X POST http://localhost:9090/api/v1/slos \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name":           "api-availability",
+    "metric_type":    "availability",
+    "target_percent": 99.9,
+    "wql_query":      "avg(availability_percent[7d])",
+    "window":         "7d"
+  }'
+
+# List all SLOs with computed status
+curl http://localhost:9090/api/v1/slos
+```
+
+Response entry:
+```json
+{
+  "slo": { "name": "api-availability", "target_percent": 99.9, "window": "7d", ... },
+  "current_sli": 99.95,
+  "error_budget_total": 10.08,
+  "error_budget_consumed": 3.02,
+  "error_budget_pct": 70.0,
+  "healthy": true
+}
+```
+
+The WQL query must return a 0–100 value representing the SLI percentage. Windows: `1d`, `7d`, `30d`.
 
 ### WebSocket `/ws`
 

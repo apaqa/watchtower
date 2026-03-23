@@ -20,6 +20,8 @@ import (
 	"github.com/apaqa/watchtower/internal/notify"
 	"github.com/apaqa/watchtower/internal/probe"
 	"github.com/apaqa/watchtower/internal/registry"
+	"github.com/apaqa/watchtower/internal/servicemap"
+	"github.com/apaqa/watchtower/internal/slo"
 	"github.com/apaqa/watchtower/internal/tracestore"
 	"github.com/apaqa/watchtower/internal/tsdb"
 )
@@ -103,6 +105,10 @@ func main() {
 	traceStore := tracestore.New()
 	defer traceStore.Stop()
 
+	// ── 5d. Initialize service map builder and SLO store ─────────────────────
+	svcMapBuilder := servicemap.NewBuilder(traceStore)
+	sloStore := slo.NewStore(db)
+
 	// ── 4b. Initialize API key store and pre-load keys from config ───────────
 	keyStore := auth.NewKeyStore()
 	for _, ak := range cfg.APIKeys {
@@ -161,6 +167,8 @@ func main() {
 	ingestSrv.RegisterTraceStore(traceStore)
 	ingestSrv.RegisterAgentRegistry(agentRegistry)
 	ingestSrv.RegisterNotifyRouter(notifyRouter)
+	ingestSrv.RegisterServiceMapBuilder(svcMapBuilder)
+	ingestSrv.RegisterSLOStore(sloStore)
 	ingestSrv.RegisterKeyStore(keyStore)
 	go func() {
 		if err := ingestSrv.Start(); err != nil {
@@ -224,6 +232,8 @@ func main() {
 	fmt.Printf("Agents:  %s/api/v1/agents\n", base)
 	fmt.Printf("Auth:    %s/api/v1/auth/keys\n", base)
 	fmt.Printf("Notify:  %s/api/v1/notifications\n", base)
+	fmt.Printf("SvcMap:  %s/api/v1/servicemap\n", base)
+	fmt.Printf("SLOs:    %s/api/v1/slos\n", base)
 	fmt.Printf("Scrape:  %s/metrics  (Prometheus scrape endpoint)\n", base)
 	fmt.Printf("Prom:    %s/api/v1/metrics/prometheus  (Prometheus push)\n", base)
 	fmt.Printf("Panels:  http://localhost:%d/api/v1/dashboard/panels\n", cfg.Server.DashboardPort)
