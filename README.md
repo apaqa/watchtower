@@ -196,6 +196,21 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - Current on-call person displayed in a persistent **header widget**
 - Clicking the widget navigates to the Incidents tab with full schedule view
 
+### Plugin System
+
+- Extensible **plugin architecture** for custom metric collectors
+- `Plugin` interface: `Name()`, `Version()`, `Init(config)`, `Collect()`, `Interval()`, `Stop()`
+- Each plugin runs its own goroutine at its configured interval; collected metrics written directly to TSDB
+- Built-in plugins (auto-loaded, skip gracefully if hardware/software unavailable):
+  - **network** — `network_bytes_sent/recv`, `network_packets_sent/recv`, `network_errors` per interface (via gopsutil)
+  - **gpu** — `gpu_usage_percent`, `gpu_memory_used_mb`, `gpu_temperature_celsius` per GPU (via nvidia-smi)
+  - **docker** — `container_cpu_percent`, `container_memory_mb`, `container_status` per running container (via docker stats)
+- `GET /api/v1/plugins` — list plugins with status (running/stopped/error), version, interval, last collected count
+- `POST /api/v1/plugins/{name}/stop` — stop a running plugin
+- `POST /api/v1/plugins/{name}/start` — start or restart a plugin
+- Configurable in `watchtower.yaml` via `plugins` section
+- Dashboard **Admin tab** → **Plugins** section: status badge, version, interval, start/stop toggle buttons
+
 ### Kubernetes-Style Health Checks
 
 - **Liveness probe** (`GET /api/v1/health/live`) — always returns `200 OK` while the process is alive
@@ -1036,6 +1051,38 @@ curl -X POST http://localhost:9090/api/v1/oncall/schedule \
   ]}'
 ```
 
+### Plugin API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/api/v1/plugins` | List all plugins with status, version, interval, last collected count |
+| `POST` | `/api/v1/plugins/{name}/stop` | Stop a running plugin |
+| `POST` | `/api/v1/plugins/{name}/start` | Start or restart a stopped plugin |
+
+```bash
+# List plugins
+curl http://localhost:9090/api/v1/plugins
+
+# Stop the GPU plugin
+curl -X POST http://localhost:9090/api/v1/plugins/gpu/stop
+
+# Re-enable Docker plugin
+curl -X POST http://localhost:9090/api/v1/plugins/docker/start
+```
+
+**Config example** (`watchtower.yaml`):
+```yaml
+plugins:
+  - name: network
+    enabled: true
+    config:
+      interfaces: "eth0,lo"   # limit to specific interfaces
+  - name: gpu
+    enabled: false            # disable if no GPU present
+  - name: docker
+    enabled: true
+```
+
 ### Health Check API
 
 | Method | Path | Description |
@@ -1302,7 +1349,7 @@ watchtower/
 ## Running Tests
 
 ```bash
-go test ./...                        # all packages (~391 tests)
+go test ./...                        # all packages (~404 tests)
 go test ./internal/auth/...          # auth middleware + key management (19 tests)
 go test ./internal/ingest/...        # ingest server + Prometheus parser (12 new)
 go test ./internal/registry/...      # agent registry + API (15 tests)

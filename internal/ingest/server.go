@@ -15,6 +15,7 @@ import (
 	"github.com/apaqa/watchtower/internal/health"
 	"github.com/apaqa/watchtower/internal/incident"
 	"github.com/apaqa/watchtower/internal/oncall"
+	"github.com/apaqa/watchtower/internal/plugin"
 	"github.com/apaqa/watchtower/internal/quota"
 	"github.com/apaqa/watchtower/internal/auth"
 	"github.com/apaqa/watchtower/internal/correlation"
@@ -216,6 +217,11 @@ func (s *Server) RegisterQuotaManager(m *quota.Manager) {
 // RegisterRateLimiter 注入速率限制器（必须在 Start 之前调用）
 func (s *Server) RegisterRateLimiter(rl *quota.RateLimiter) {
 	s.rateLimiter = rl
+}
+
+// RegisterPluginManager 注册插件管理 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterPluginManager(m *plugin.Manager) {
+	plugin.RegisterRoutes(s.mux, m)
 }
 
 // RegisterLogStore 注入日志存储并注册日志 API 路由（必须在 Start 之前调用）

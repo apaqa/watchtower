@@ -20,6 +20,7 @@ type Config struct {
 	Notifications     NotificationsConfig `yaml:"notifications"`
 	Quotas            []QuotaConfig       `yaml:"quotas"`       // 自定义资源配额
 	RateLimit         RateLimitConfig     `yaml:"rate_limit"`   // API 速率限制
+	Plugins           []PluginConfig      `yaml:"plugins"`      // 插件配置（覆盖内置默认值）
 }
 
 // QuotaConfig 描述单个资源类型的配额上限
@@ -33,6 +34,13 @@ type RateLimitConfig struct {
 	Enabled    bool    `yaml:"enabled"`     // 是否启用速率限制，默认 false
 	Capacity   float64 `yaml:"capacity"`    // 令牌桶容量（突发上限），默认 200
 	RefillRate float64 `yaml:"refill_rate"` // 每秒补充令牌数，默认 100
+}
+
+// PluginConfig 描述单个插件的配置
+type PluginConfig struct {
+	Name    string            `yaml:"name"`    // 插件名称，如 "network"/"gpu"/"docker"
+	Enabled *bool             `yaml:"enabled"` // nil 表示使用默认值（true）
+	Config  map[string]string `yaml:"config"`  // 传递给 Plugin.Init 的键值对
 }
 
 // ServerConfig 控制 HTTP 服务监听端口

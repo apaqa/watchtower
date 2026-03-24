@@ -1592,6 +1592,13 @@
     </div>
     <div id="quota-bars" style="margin-top:0.5rem;margin-bottom:1.25rem;display:flex;flex-direction:column;gap:0.5rem"></div>
 
+    <!-- Plugins section -->
+    <div class="slo-section-header" style="margin-top:0.5rem">
+      <span class="slo-section-label">Plugins</span>
+      <button onclick="fetchPlugins()" style="padding:4px 12px;background:var(--accent);color:#0d1117;border:none;border-radius:5px;cursor:pointer;font-size:0.8rem">Refresh</button>
+    </div>
+    <div id="plugin-cards" style="margin-top:0.5rem;margin-bottom:1.25rem;display:flex;flex-wrap:wrap;gap:0.6rem"></div>
+
     <!-- 系统信息卡片 -->
     <div class="slo-section-header">
       <span class="slo-section-label">System Status</span>
@@ -4077,6 +4084,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   if (btn.dataset.tab === 'admin') btn.addEventListener('click', () => {
     fetchHealth();
     fetchQuotas();
+    fetchPlugins();
   });
 });
 
@@ -4132,6 +4140,57 @@ async function fetchQuotas() {
   } catch (e) {
     document.getElementById('quota-bars').innerHTML = '<span style="color:var(--muted);font-size:0.8rem">Quota data unavailable</span>';
   }
+}
+
+// ── Plugins ───────────────────────────────────────────────────────────────────
+async function fetchPlugins() {
+  try {
+    const res = await apiFetch(`${INGEST_BASE}/api/v1/plugins`);
+    const list = await res.json();
+    renderPlugins(list);
+  } catch (e) {
+    document.getElementById('plugin-cards').innerHTML = '<span style="color:var(--muted);font-size:0.8rem">Plugin data unavailable</span>';
+  }
+}
+
+function pluginStatusColor(s) {
+  if (s === 'running') return 'var(--green)';
+  if (s === 'stopped') return 'var(--muted)';
+  return 'var(--red)';
+}
+
+function renderPlugins(list) {
+  const container = document.getElementById('plugin-cards');
+  if (!list || list.length === 0) {
+    container.innerHTML = '<span style="color:var(--muted);font-size:0.8rem">No plugins registered</span>';
+    return;
+  }
+  container.innerHTML = list.map(p => {
+    const col = pluginStatusColor(p.status);
+    const isRunning = p.status === 'running';
+    const actionLabel = isRunning ? 'Stop' : 'Start';
+    const actionEndpoint = isRunning ? 'stop' : 'start';
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;min-width:200px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <strong style="font-size:0.88rem">${p.name}</strong>
+        <span style="font-size:0.75rem;padding:2px 7px;border-radius:10px;background:${col};color:#0d1117;font-weight:600">${p.status}</span>
+      </div>
+      <div style="color:var(--muted);font-size:0.78rem">v${p.version} · every ${p.interval}</div>
+      ${p.last_collected_count > 0 ? `<div style="color:var(--muted);font-size:0.75rem">${p.last_collected_count} metrics/run</div>` : ''}
+      ${p.error_message ? `<div style="color:var(--red);font-size:0.75rem;margin-top:3px">${p.error_message}</div>` : ''}
+      <button onclick="pluginAction('${p.name}','${actionEndpoint}')"
+        style="margin-top:6px;padding:3px 10px;font-size:0.75rem;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--text);cursor:pointer">
+        ${actionLabel}
+      </button>
+    </div>`;
+  }).join('');
+}
+
+async function pluginAction(name, action) {
+  try {
+    await apiFetch(`${INGEST_BASE}/api/v1/plugins/${name}/${action}`, { method: 'POST' });
+    setTimeout(fetchPlugins, 300);
+  } catch (e) { /* ignore */ }
 }
 
 function renderQuotas(list) {

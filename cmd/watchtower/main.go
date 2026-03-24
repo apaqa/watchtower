@@ -21,7 +21,9 @@ import (
 	"github.com/apaqa/watchtower/internal/grafana"
 	"github.com/apaqa/watchtower/internal/health"
 	"github.com/apaqa/watchtower/internal/incident"
+	"github.com/apaqa/watchtower/internal/model"
 	"github.com/apaqa/watchtower/internal/oncall"
+	"github.com/apaqa/watchtower/internal/plugin"
 	"github.com/apaqa/watchtower/internal/quota"
 	"github.com/apaqa/watchtower/internal/dashboard"
 	"github.com/apaqa/watchtower/internal/export"
@@ -282,6 +284,38 @@ func main() {
 	if rateLimiter != nil {
 		ingestSrv.RegisterRateLimiter(rateLimiter)
 	}
+
+	// 初始化插件管理器，postFn 直接写入 TSDB（无需经过 HTTP）
+	pluginMgr := plugin.New(func(pts []model.MetricPoint) {
+		db.Write(pts)
+	})
+	// 注册内置插件
+	pluginMgr.Register(plugin.NewNetworkPlugin())
+	pluginMgr.Register(plugin.NewGPUPlugin())
+	pluginMgr.Register(plugin.NewDockerPlugin())
+
+	// 从配置文件构建每个插件的配置映射
+	pluginCfgs := make(map[string]map[string]string)
+	pluginEnabled := map[string]bool{"network": true, "gpu": true, "docker": true}
+	for _, pc := range cfg.Plugins {
+		if pc.Enabled != nil && !*pc.Enabled {
+			pluginEnabled[pc.Name] = false
+			continue
+		}
+		pluginCfgs[pc.Name] = pc.Config
+	}
+
+	// 只启动未被禁用的插件
+	enabledCfgs := make(map[string]map[string]string)
+	for name, enabled := range pluginEnabled {
+		if enabled {
+			enabledCfgs[name] = pluginCfgs[name]
+		}
+	}
+	pluginMgr.StartAll(enabledCfgs)
+	defer pluginMgr.StopAll()
+	ingestSrv.RegisterPluginManager(pluginMgr)
+
 	ingestSrv.RegisterKeyStore(keyStore)
 	go func() {
 		if err := ingestSrv.Start(); err != nil {
@@ -364,6 +398,7 @@ func main() {
 	fmt.Printf("Live:    %s/api/v1/health/live\n", base)
 	fmt.Printf("Ready:   %s/api/v1/health/ready\n", base)
 	fmt.Printf("Quotas:  %s/api/v1/quotas\n", base)
+	fmt.Printf("Plugins: %s/api/v1/plugins\n", base)
 	fmt.Printf("Scrape:  %s/metrics  (Prometheus scrape endpoint)\n", base)
 	fmt.Printf("Prom:    %s/api/v1/metrics/prometheus  (Prometheus push)\n", base)
 	fmt.Printf("Panels:  http://localhost:%d/api/v1/dashboard/panels\n", cfg.Server.DashboardPort)
