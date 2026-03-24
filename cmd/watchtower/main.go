@@ -18,6 +18,7 @@ import (
 	"github.com/apaqa/watchtower/internal/config"
 	"github.com/apaqa/watchtower/internal/correlation"
 	"github.com/apaqa/watchtower/internal/forecast"
+	"github.com/apaqa/watchtower/internal/grafana"
 	"github.com/apaqa/watchtower/internal/dashboard"
 	"github.com/apaqa/watchtower/internal/export"
 	"github.com/apaqa/watchtower/internal/ingest"
@@ -128,6 +129,7 @@ func main() {
 	defer anomalyDetector.Stop()
 	correlator := correlation.New(db)
 	forecaster := forecast.New(db)
+	grafanaHandler := grafana.New(db, alertEng)
 
 	// 初始化降采样器和保留策略引擎
 	downsampler := tsdb.NewDownsampler(db)
@@ -221,6 +223,7 @@ func main() {
 	ingestSrv.RegisterForecaster(forecaster)
 	ingestSrv.RegisterRetentionEngine(retentionEngine)
 	ingestSrv.RegisterAdminHandler(adminHandler)
+	ingestSrv.RegisterGrafanaHandler(grafanaHandler)
 	ingestSrv.RegisterKeyStore(keyStore)
 	go func() {
 		if err := ingestSrv.Start(); err != nil {
@@ -296,6 +299,7 @@ func main() {
 	fmt.Printf("Capacity:%s/api/v1/capacity\n", base)
 	fmt.Printf("Retain:  %s/api/v1/retention\n", base)
 	fmt.Printf("Admin:   %s/api/v1/admin/status\n", base)
+	fmt.Printf("Grafana: %s/api/grafana/\n", base)
 	fmt.Printf("Scrape:  %s/metrics  (Prometheus scrape endpoint)\n", base)
 	fmt.Printf("Prom:    %s/api/v1/metrics/prometheus  (Prometheus push)\n", base)
 	fmt.Printf("Panels:  http://localhost:%d/api/v1/dashboard/panels\n", cfg.Server.DashboardPort)

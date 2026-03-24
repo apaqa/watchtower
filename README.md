@@ -181,6 +181,22 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - `GET /api/v1/capacity` — returns full CapacityReport for all system metrics
 - Dashboard **Forecasting & Capacity** section in Metrics tab: capacity summary cards (CPU/Memory/Disk) with trend arrow (↑↓→) and health badge; interactive forecast widget with dashed prediction line chart
 
+### Grafana Integration
+
+- Implements the **Grafana SimpleJSON** data source protocol
+- Add WatchTower as a data source in Grafana (type: SimpleJSON, URL: `http://localhost:9090/api/grafana/`)
+- Browse and search available metrics via the Grafana metric selector
+- Query full time-series data with label support in target panels
+- Unsupported metric names are evaluated as **WQL expressions** (e.g., `cpu_usage_percent / 100`)
+- Alert events appear as **Grafana annotations** on any panel
+
+### Metric Math Expressions
+
+- WQL now supports **vector × vector arithmetic**: `used_bytes / total_bytes`
+- Label-based matching: series are joined by identical label sets; unmatched series are dropped
+- **Broadcast mode**: if one side has a single label-less series, it is applied to all series on the other side
+- Full operator support: `+`, `-`, `*`, `/` across any combination of scalars and vectors
+
 ### Process Monitoring
 - Collects the top 20 processes by CPU usage every 10 seconds via `gopsutil/v3/process`
 - Per-process data: PID, name, CPU%, memory (MB + %), status (running/sleeping/zombie), start time, command line, username
@@ -934,6 +950,36 @@ curl "http://localhost:9090/api/v1/forecast?metric=disk_usage_percent&threshold=
 curl "http://localhost:9090/api/v1/capacity"
 ```
 
+### Grafana SimpleJSON API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/api/grafana/` | Health check (Grafana data source connection test) |
+| `POST` | `/api/grafana/search` | Return available metric names (optionally filtered by `target` prefix) |
+| `POST` | `/api/grafana/query` | Query time-series data in SimpleJSON timeserie format |
+| `POST` | `/api/grafana/annotations` | Return fired alert events as Grafana panel annotations |
+
+```bash
+# Test connection
+curl http://localhost:9090/api/grafana/
+
+# List all metrics
+curl -X POST http://localhost:9090/api/grafana/search \
+  -H 'Content-Type: application/json' -d '{}'
+
+# Query time series (last hour)
+curl -X POST http://localhost:9090/api/grafana/query \
+  -H 'Content-Type: application/json' \
+  -d '{"range":{"from":"2024-01-01T00:00:00.000Z","to":"2030-01-01T00:00:00.000Z"},
+       "targets":[{"target":"cpu_usage_percent","type":"timeserie"}]}'
+
+# Query via WQL expression
+curl -X POST http://localhost:9090/api/grafana/query \
+  -H 'Content-Type: application/json' \
+  -d '{"range":{"from":"2024-01-01T00:00:00.000Z","to":"2030-01-01T00:00:00.000Z"},
+       "targets":[{"target":"avg(cpu_usage_percent[5m])","type":"timeserie"}]}'
+```
+
 ### Process Monitor
 
 | Method | Path | Description |
@@ -1065,9 +1111,11 @@ watchtower/
 │   │   ├── lexer.go             # WQL lexer
 │   │   ├── parser.go            # WQL parser (AST)
 │   │   ├── evaluator.go         # WQL evaluator
+│   │   ├── math.go              # Vector-vector binary ops with label matching
 │   │   ├── lexer_test.go
 │   │   ├── parser_test.go
-│   │   └── evaluator_test.go
+│   │   ├── evaluator_test.go
+│   │   └── math_test.go
 │   ├── alert/
 │   │   ├── rule.go              # AlertRule, Alert, AlertState, AlertEvent types
 │   │   ├── engine.go            # Evaluation loop, state machine, webhook dispatch
@@ -1105,6 +1153,9 @@ watchtower/
 │   │   ├── panels.go            # Custom panel store + panel CRUD HTTP API
 │   │   └── static/
 │   │       └── index.html       # Single-page dashboard (6 tabs + custom panels)
+│   ├── grafana/
+│   │   ├── api.go               # Grafana SimpleJSON data source protocol
+│   │   └── api_test.go
 │   └── model/
 │       ├── metric.go            # MetricPoint type + fingerprint
 │       ├── log.go               # LogEntry, LogLevel types
@@ -1118,7 +1169,7 @@ watchtower/
 ## Running Tests
 
 ```bash
-go test ./...                        # all packages (~330 tests)
+go test ./...                        # all packages (~350 tests)
 go test ./internal/auth/...          # auth middleware + key management (19 tests)
 go test ./internal/ingest/...        # ingest server + Prometheus parser (12 new)
 go test ./internal/registry/...      # agent registry + API (15 tests)

@@ -195,7 +195,16 @@ func (e *Evaluator) evalBinary(n *BinaryExpr) (*Result, error) {
 		return &Result{Type: ResultVector, Vector: samples}, nil
 	}
 
-	return nil, fmt.Errorf("不支持向量之间的算术运算")
+	// 向量×向量：按标签匹配后逐元素运算（使用 math.go 中的 vectorBinaryOp）
+	if left.Type == ResultVector && right.Type == ResultVector {
+		samples, err := vectorBinaryOp(n.Op, left.Vector, right.Vector)
+		if err != nil {
+			return nil, err
+		}
+		return &Result{Type: ResultVector, Vector: samples}, nil
+	}
+
+	return nil, fmt.Errorf("不支持的二元运算组合: %s %s %s", left.Type, n.Op, right.Type)
 }
 
 // evalComparison 对比较表达式求值，返回 bool 结果
