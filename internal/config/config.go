@@ -10,14 +10,29 @@ import (
 
 // Config 是顶级配置结构，对应 watchtower.yaml 文件
 type Config struct {
-	Server           ServerConfig      `yaml:"server"`
-	Agent            AgentConfig       `yaml:"agent"`
-	Retention        RetentionConfig   `yaml:"retention"`
+	Server            ServerConfig        `yaml:"server"`
+	Agent             AgentConfig         `yaml:"agent"`
+	Retention         RetentionConfig     `yaml:"retention"`
 	RetentionPolicies []RetentionPolicyConfig `yaml:"retention_policies"`
-	Endpoints        []EndpointConfig  `yaml:"endpoints"`
-	Alerts           []AlertConfig     `yaml:"alerts"`
-	APIKeys          []APIKeyConfig    `yaml:"api_keys"`
-	Notifications    NotificationsConfig `yaml:"notifications"`
+	Endpoints         []EndpointConfig    `yaml:"endpoints"`
+	Alerts            []AlertConfig       `yaml:"alerts"`
+	APIKeys           []APIKeyConfig      `yaml:"api_keys"`
+	Notifications     NotificationsConfig `yaml:"notifications"`
+	Quotas            []QuotaConfig       `yaml:"quotas"`       // 自定义资源配额
+	RateLimit         RateLimitConfig     `yaml:"rate_limit"`   // API 速率限制
+}
+
+// QuotaConfig 描述单个资源类型的配额上限
+type QuotaConfig struct {
+	Resource string `yaml:"resource"` // 资源类型（见 quota.ResourceType）
+	Limit    int64  `yaml:"limit"`    // 0 表示不限制
+}
+
+// RateLimitConfig 描述令牌桶速率限制参数
+type RateLimitConfig struct {
+	Enabled    bool    `yaml:"enabled"`     // 是否启用速率限制，默认 false
+	Capacity   float64 `yaml:"capacity"`    // 令牌桶容量（突发上限），默认 200
+	RefillRate float64 `yaml:"refill_rate"` // 每秒补充令牌数，默认 100
 }
 
 // ServerConfig 控制 HTTP 服务监听端口

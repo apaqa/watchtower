@@ -19,8 +19,10 @@ import (
 	"github.com/apaqa/watchtower/internal/correlation"
 	"github.com/apaqa/watchtower/internal/forecast"
 	"github.com/apaqa/watchtower/internal/grafana"
+	"github.com/apaqa/watchtower/internal/health"
 	"github.com/apaqa/watchtower/internal/incident"
 	"github.com/apaqa/watchtower/internal/oncall"
+	"github.com/apaqa/watchtower/internal/quota"
 	"github.com/apaqa/watchtower/internal/dashboard"
 	"github.com/apaqa/watchtower/internal/export"
 	"github.com/apaqa/watchtower/internal/ingest"
@@ -211,6 +213,44 @@ func main() {
 	defer probeMgr.Stop()
 	statusPage := statuspage.New(probeMgr, sloStore, alertEng)
 
+	// 初始化健康检查管理器（需在 probeMgr 之后，闭包捕获其变量）
+	healthMgr := health.New()
+	healthMgr.Register(health.NewFuncCheck("tsdb", func() health.HealthResult {
+		if db == nil {
+			return health.HealthResult{Status: health.StatusUnhealthy, Message: "TSDB 未初始化"}
+		}
+		return health.HealthResult{Status: health.StatusHealthy, Message: "ok"}
+	}))
+	healthMgr.Register(health.NewFuncCheck("ingest", func() health.HealthResult {
+		return health.HealthResult{Status: health.StatusHealthy, Message: "ok"}
+	}))
+	healthMgr.Register(health.NewFuncCheck("probe_manager", func() health.HealthResult {
+		_ = probeMgr // 确保探针管理器已初始化
+		return health.HealthResult{Status: health.StatusHealthy, Message: "ok"}
+	}))
+	healthMgr.Start()
+	defer healthMgr.Stop()
+
+	// 初始化资源配额管理器
+	quotaMgr := quota.NewManager()
+	for _, qc := range cfg.Quotas {
+		quotaMgr.UpdateLimit(quota.ResourceType(qc.Resource), qc.Limit)
+	}
+
+	// 初始化速率限制器（如已在配置中启用）
+	var rateLimiter *quota.RateLimiter
+	if cfg.RateLimit.Enabled {
+		rlCap := cfg.RateLimit.Capacity
+		rlRate := cfg.RateLimit.RefillRate
+		if rlCap <= 0 {
+			rlCap = quota.DefaultBucketConfig.Capacity
+		}
+		if rlRate <= 0 {
+			rlRate = quota.DefaultBucketConfig.RefillRate
+		}
+		rateLimiter = quota.NewRateLimiter(quota.BucketConfig{Capacity: rlCap, RefillRate: rlRate})
+	}
+
 	// ── 7. Start ingest server (metrics + WQL + alerts + logs + probes + traces) ──
 	ingestSrv, err := ingest.New(cfg.IngestAddr(), db)
 	if err != nil {
@@ -237,6 +277,11 @@ func main() {
 	ingestSrv.RegisterGrafanaHandler(grafanaHandler)
 	ingestSrv.RegisterIncidentStore(incidentStore)
 	ingestSrv.RegisterOncallScheduler(oncallScheduler)
+	ingestSrv.RegisterHealthManager(healthMgr)
+	ingestSrv.RegisterQuotaManager(quotaMgr)
+	if rateLimiter != nil {
+		ingestSrv.RegisterRateLimiter(rateLimiter)
+	}
 	ingestSrv.RegisterKeyStore(keyStore)
 	go func() {
 		if err := ingestSrv.Start(); err != nil {
@@ -315,6 +360,10 @@ func main() {
 	fmt.Printf("Grafana: %s/api/grafana/\n", base)
 	fmt.Printf("Incidents:%s/api/v1/incidents\n", base)
 	fmt.Printf("OnCall:  %s/api/v1/oncall\n", base)
+	fmt.Printf("Health:  %s/api/v1/health\n", base)
+	fmt.Printf("Live:    %s/api/v1/health/live\n", base)
+	fmt.Printf("Ready:   %s/api/v1/health/ready\n", base)
+	fmt.Printf("Quotas:  %s/api/v1/quotas\n", base)
 	fmt.Printf("Scrape:  %s/metrics  (Prometheus scrape endpoint)\n", base)
 	fmt.Printf("Prom:    %s/api/v1/metrics/prometheus  (Prometheus push)\n", base)
 	fmt.Printf("Panels:  http://localhost:%d/api/v1/dashboard/panels\n", cfg.Server.DashboardPort)

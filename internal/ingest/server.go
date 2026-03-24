@@ -12,8 +12,10 @@ import (
 	"github.com/apaqa/watchtower/internal/alert"
 	"github.com/apaqa/watchtower/internal/admin"
 	"github.com/apaqa/watchtower/internal/anomaly"
+	"github.com/apaqa/watchtower/internal/health"
 	"github.com/apaqa/watchtower/internal/incident"
 	"github.com/apaqa/watchtower/internal/oncall"
+	"github.com/apaqa/watchtower/internal/quota"
 	"github.com/apaqa/watchtower/internal/auth"
 	"github.com/apaqa/watchtower/internal/correlation"
 	"github.com/apaqa/watchtower/internal/forecast"
@@ -36,12 +38,14 @@ import (
 
 // Server 负责接收 HTTP POST 请求并将数据写入 TSDB
 type Server struct {
-	db       *tsdb.TSDB
-	logStore *logstore.Store // 可选的日志存储；由 RegisterLogStore 注入
-	keyStore *auth.KeyStore  // 可选的 API 密钥存储；nil 表示开放模式
-	mux      *http.ServeMux  // 保留对路由器的引用，以便后续注册路由
-	httpSrv  *http.Server
-	listener net.Listener
+	db           *tsdb.TSDB
+	logStore     *logstore.Store    // 可选的日志存储；由 RegisterLogStore 注入
+	keyStore     *auth.KeyStore     // 可选的 API 密钥存储；nil 表示开放模式
+	quotaManager *quota.Manager     // 可选的资源配额管理器
+	rateLimiter  *quota.RateLimiter // 可选的速率限制器
+	mux          *http.ServeMux     // 保留对路由器的引用，以便后续注册路由
+	httpSrv      *http.Server
+	listener     net.Listener
 }
 
 // New 创建摄入服务实例，绑定到指定地址
@@ -73,8 +77,21 @@ func New(addr string, db *tsdb.TSDB) (*Server, error) {
 	return s, nil
 }
 
-// ServeHTTP 实现 http.Handler，在委托给 mux 之前执行 API 密钥认证检查
+// ServeHTTP 实现 http.Handler，在委托给 mux 之前执行速率限制和 API 密钥认证检查
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// 1. 速率限制（如已启用）
+	if s.rateLimiter != nil {
+		key := r.Header.Get("X-API-Key")
+		if !s.rateLimiter.Allow(w, key) {
+			http.Error(w, `{"error":"请求过于频繁，请稍后重试"}`, http.StatusTooManyRequests)
+			return
+		}
+	}
+	// 2. 统计 API 请求配额
+	if s.quotaManager != nil {
+		s.quotaManager.Increment(quota.ResourceAPIRequests, 1)
+	}
+	// 3. 认证检查
 	auth.Middleware(s.keyStore, s.mux).ServeHTTP(w, r)
 }
 
@@ -185,6 +202,22 @@ func (s *Server) RegisterOncallScheduler(sc *oncall.Scheduler) {
 	oncall.RegisterRoutes(s.mux, sc)
 }
 
+// RegisterHealthManager 注册健康检查 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterHealthManager(m *health.Manager) {
+	health.RegisterRoutes(s.mux, m)
+}
+
+// RegisterQuotaManager 注入配额管理器并注册配额 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterQuotaManager(m *quota.Manager) {
+	s.quotaManager = m
+	quota.RegisterRoutes(s.mux, m)
+}
+
+// RegisterRateLimiter 注入速率限制器（必须在 Start 之前调用）
+func (s *Server) RegisterRateLimiter(rl *quota.RateLimiter) {
+	s.rateLimiter = rl
+}
+
 // RegisterLogStore 注入日志存储并注册日志 API 路由（必须在 Start 之前调用）
 func (s *Server) RegisterLogStore(ls *logstore.Store) {
 	s.logStore = ls
@@ -265,6 +298,14 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 检查指标写入配额
+	if s.quotaManager != nil {
+		if !s.quotaManager.Increment(quota.ResourceMetricsPerMinute, int64(len(points))) {
+			http.Error(w, `{"error":"已超出每分钟指标写入配额"}`, http.StatusTooManyRequests)
+			return
+		}
+	}
+
 	// 写入 TSDB
 	s.db.Write(points)
 
@@ -297,6 +338,13 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&entries); err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":"%v"}`, err), http.StatusBadRequest)
 			return
+		}
+		// 检查日志写入配额
+		if s.quotaManager != nil {
+			if !s.quotaManager.Increment(quota.ResourceLogsPerMinute, int64(len(entries))) {
+				http.Error(w, `{"error":"已超出每分钟日志写入配额"}`, http.StatusTooManyRequests)
+				return
+			}
 		}
 		s.logStore.WriteMany(entries)
 		w.WriteHeader(http.StatusNoContent)

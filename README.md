@@ -196,6 +196,25 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - Current on-call person displayed in a persistent **header widget**
 - Clicking the widget navigates to the Incidents tab with full schedule view
 
+### Kubernetes-Style Health Checks
+
+- **Liveness probe** (`GET /api/v1/health/live`) — always returns `200 OK` while the process is alive
+- **Readiness probe** (`GET /api/v1/health/ready`) — returns `200 OK` when all checks pass; `503` otherwise
+- **Full health report** (`GET /api/v1/health`) — JSON report with per-check status, message, and latency
+- Health statuses: `healthy`, `degraded`, `unhealthy`; overall status is the worst among all checks
+- Checks run every 15 seconds in the background; results are cached for zero-latency API responses
+- Built-in checks: TSDB availability, ingest service, probe manager
+- Dashboard **Admin tab** → **System Health** section: traffic-light indicators per check
+
+### Resource Quotas & Rate Limiting
+
+- Per-minute quotas for: `metrics_per_minute` (default 10 000), `logs_per_minute` (default 5 000), `api_requests_per_minute` (default 1 000), `series_count`, `storage_bytes`
+- `GET /api/v1/quotas` — list all quotas with current usage and reset timestamp
+- `PUT /api/v1/quotas/{resource}` — update a quota limit (`{"limit": 20000}`)
+- **Token-bucket rate limiter** per API key: configurable capacity and refill rate; `X-RateLimit-Limit/Remaining/Reset` headers on every response; `429 Too Many Requests` when exhausted
+- Configurable in `watchtower.yaml` via `quotas` and `rate_limit` sections
+- Dashboard **Admin tab** → **Resource Quotas** section: progress bars with colour coding (green/yellow/red)
+
 ### Grafana Integration
 
 - Implements the **Grafana SimpleJSON** data source protocol
@@ -1017,6 +1036,53 @@ curl -X POST http://localhost:9090/api/v1/oncall/schedule \
   ]}'
 ```
 
+### Health Check API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/api/v1/health` | Full health report (all checks, overall status) |
+| `GET`  | `/api/v1/health/live` | Kubernetes liveness probe — always `200` |
+| `GET`  | `/api/v1/health/ready` | Kubernetes readiness probe — `200` healthy, `503` unhealthy |
+
+```bash
+# Kubernetes liveness probe
+curl http://localhost:9090/api/v1/health/live
+
+# Full health report
+curl http://localhost:9090/api/v1/health
+# {"status":"healthy","checks":[{"name":"tsdb","result":{"status":"healthy","message":"ok","latency_ms":0}}],"checked_at_ms":1700000000000}
+```
+
+### Quota & Rate Limit API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/api/v1/quotas` | List all resource quotas with usage |
+| `PUT`  | `/api/v1/quotas/{resource}` | Update a quota limit |
+
+```bash
+# List quotas
+curl http://localhost:9090/api/v1/quotas
+
+# Update metrics quota to 50 000/min
+curl -X PUT http://localhost:9090/api/v1/quotas/metrics_per_minute \
+  -H 'Content-Type: application/json' -d '{"limit":50000}'
+```
+
+**Config example** (`watchtower.yaml`):
+```yaml
+quotas:
+  - resource: metrics_per_minute
+    limit: 50000
+  - resource: logs_per_minute
+    limit: 10000
+
+rate_limit:
+  enabled: true
+  capacity: 500       # token bucket size (burst)
+  refill_rate: 200    # tokens/second
+```
+
 ### Grafana SimpleJSON API
 
 | Method | Path | Description |
@@ -1236,7 +1302,7 @@ watchtower/
 ## Running Tests
 
 ```bash
-go test ./...                        # all packages (~370 tests)
+go test ./...                        # all packages (~391 tests)
 go test ./internal/auth/...          # auth middleware + key management (19 tests)
 go test ./internal/ingest/...        # ingest server + Prometheus parser (12 new)
 go test ./internal/registry/...      # agent registry + API (15 tests)
