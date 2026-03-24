@@ -29,6 +29,8 @@ import (
 	"github.com/apaqa/watchtower/internal/tenant"
 	"github.com/apaqa/watchtower/internal/dashboard"
 	"github.com/apaqa/watchtower/internal/export"
+	"github.com/apaqa/watchtower/internal/synthetic"
+	"github.com/apaqa/watchtower/internal/webhook"
 	"github.com/apaqa/watchtower/internal/ingest"
 	"github.com/apaqa/watchtower/internal/logstore"
 	"github.com/apaqa/watchtower/internal/notify"
@@ -328,6 +330,58 @@ func main() {
 	defer pluginMgr.StopAll()
 	ingestSrv.RegisterPluginManager(pluginMgr)
 
+	// 初始化 Webhook 接收器（GitHub + 通用 + 自定义端点）
+	webhookHandler := webhook.New(
+		func(pts []model.MetricPoint) { db.Write(pts) },
+		func(entries []model.LogEntry) { logStore.WriteMany(entries) },
+	)
+	for _, wc := range cfg.Webhooks {
+		rules := make([]webhook.ExtractRule, len(wc.Rules))
+		for i, r := range wc.Rules {
+			rules[i] = webhook.ExtractRule{
+				JSONPath:      r.JSONPath,
+				MetricName:    r.MetricName,
+				LabelMappings: r.LabelMappings,
+			}
+		}
+		webhookHandler.AddConfig(webhook.WebhookConfig{
+			Name:  wc.Name,
+			Path:  wc.Path,
+			Rules: rules,
+		})
+	}
+	ingestSrv.RegisterWebhookHandler(webhookHandler)
+	fmt.Printf("Webhooks: GitHub + Generic + %d custom endpoint(s)\n", len(cfg.Webhooks))
+
+	// 初始化合成监控（postFn 直接写入 TSDB）
+	synMonitor := synthetic.New(func(pts []model.MetricPoint) { db.Write(pts) })
+	for _, stc := range cfg.SyntheticTests {
+		steps := make([]synthetic.SyntheticStep, len(stc.Steps))
+		for i, s := range stc.Steps {
+			steps[i] = synthetic.SyntheticStep{
+				Name:           s.Name,
+				Method:         s.Method,
+				URL:            s.URL,
+				Headers:        s.Headers,
+				Body:           s.Body,
+				ExpectedStatus: s.ExpectedStatus,
+				AssertContains: s.AssertContains,
+				ExtractVars:    s.ExtractVars,
+			}
+		}
+		if err := synMonitor.Add(synthetic.SyntheticTest{
+			Name:     stc.Name,
+			Interval: stc.Interval,
+			Timeout:  stc.Timeout,
+			Steps:    steps,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to load synthetic test %q: %v\n", stc.Name, err)
+		}
+	}
+	ingestSrv.RegisterSyntheticMonitor(synMonitor)
+	defer synMonitor.StopAll()
+	fmt.Printf("Synthetic: %d test(s) loaded\n", len(cfg.SyntheticTests))
+
 	ingestSrv.RegisterKeyStore(keyStore)
 	go func() {
 		if err := ingestSrv.Start(); err != nil {
@@ -344,6 +398,8 @@ func main() {
 	dashSrv.SetAlertEngine(alertEng)
 	dashSrv.SetLogStore(logStore)
 	dashSrv.SetPanelStore(panelStore)
+	shareStore := dashboard.NewShareStore()
+	dashSrv.SetShareStore(shareStore)
 	go func() {
 		if err := dashSrv.Start(); err != nil {
 			// expected on clean shutdown
@@ -416,6 +472,9 @@ func main() {
 	fmt.Printf("Scrape:  %s/metrics  (Prometheus scrape endpoint)\n", base)
 	fmt.Printf("Prom:    %s/api/v1/metrics/prometheus  (Prometheus push)\n", base)
 	fmt.Printf("Panels:  http://localhost:%d/api/v1/dashboard/panels\n", cfg.Server.DashboardPort)
+	fmt.Printf("Share:   http://localhost:%d/api/v1/dashboard/share\n", cfg.Server.DashboardPort)
+	fmt.Printf("Webhook: %s/api/v1/webhook/github  (also /generic)\n", base)
+	fmt.Printf("Synth:   %s/api/v1/synthetic\n", base)
 	fmt.Println("Press Ctrl+C to exit")
 
 	// ── 11. Wait for termination signal then shut down gracefully ─────────────

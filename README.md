@@ -261,6 +261,69 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - Configurable in `watchtower.yaml` via `quotas` and `rate_limit` sections
 - Dashboard **Admin tab** → **Resource Quotas** section: progress bars with colour coding (green/yellow/red)
 
+### Webhook Receiver
+
+- **GitHub webhooks**: receives push, pull_request, and issues events → stored as `LogEntry` with structured labels (`event`, `repo`, `ref`, `action`)
+- **Generic JSON webhook** (`POST /api/v1/webhook/generic?metric_name=X`): auto-extracts all numeric fields as metrics with label `field=<key>`
+- **Configured endpoints**: define custom paths with `ExtractRule` lists in `watchtower.yaml`; each rule specifies a `json_path` (e.g. `$.response_time`), `metric_name`, and optional `label_mappings`
+- Payload size capped at 2 MiB per request
+- Configure in `watchtower.yaml` via `webhooks:` section:
+
+```yaml
+webhooks:
+  - name: myservice
+    path: /api/v1/webhook/myservice
+    extract_rules:
+      - json_path: $.response_time
+        metric_name: myservice_response_ms
+        label_mappings:
+          env: $.environment
+```
+
+### Synthetic Monitoring
+
+- **Multi-step HTTP transaction checks** — each test chains multiple HTTP steps; variables extracted in one step can be used in subsequent steps via `{varName}` placeholders
+- Variable extraction: map `varName → $.json.path` in `extract_vars`; extracted values substitute `{varName}` in URL, body, and headers of later steps
+- Assertions: `expected_status` (default 200) and `assert_body_contains` per step
+- Results stored as TSDB metrics: `synthetic_duration_ms{test="name"}` and `synthetic_status{test="name"}` (1=pass, 0=fail)
+- Up to 20 history entries per test
+- `GET /api/v1/synthetic` — list all tests with last result
+- `POST /api/v1/synthetic` — register a new test (starts background loop immediately)
+- `GET /api/v1/synthetic/{name}/history` — full history for a test
+- Configure in `watchtower.yaml` via `synthetic_tests:` section:
+
+```yaml
+synthetic_tests:
+  - name: login-flow
+    interval_seconds: 60
+    timeout_ms: 5000
+    steps:
+      - name: get-token
+        method: POST
+        url: https://api.example.com/auth/login
+        body: '{"user":"test","pass":"secret"}'
+        expected_status: 200
+        extract_vars:
+          token: $.access_token
+      - name: fetch-profile
+        url: https://api.example.com/me
+        headers:
+          Authorization: Bearer {token}
+        expected_status: 200
+        assert_body_contains: '"email"'
+```
+
+- Dashboard **Uptime tab** → **Synthetic Tests** table: name, step count, interval, pass/fail status, duration, last run time
+
+### Dashboard Sharing
+
+- Create **read-only shareable links** with optional TTL via `POST /api/v1/dashboard/share`
+- Shared view served at `GET /share/{token}` — standalone HTML page with live metric cards, auto-refreshed every 30 seconds
+- `GET /api/v1/dashboard/shares` — list all active tokens
+- `DELETE /api/v1/dashboard/shares/{token}` — revoke a link
+- Expired tokens return `410 Gone`; revoked tokens return `404 Not Found`
+- Dashboard **Admin tab** → **Shared Dashboards** section: create links with label + TTL, view/copy tokens, revoke buttons
+
 ### Grafana Integration
 
 - Implements the **Grafana SimpleJSON** data source protocol
@@ -1195,6 +1258,78 @@ rate_limit:
   refill_rate: 200    # tokens/second
 ```
 
+### Webhook API
+
+| Method  | Path | Description |
+|---------|------|-------------|
+| `POST`  | `/api/v1/webhook/github` | Receive GitHub webhook (push/pull_request/issues → log entries) |
+| `POST`  | `/api/v1/webhook/generic` | Receive any JSON; numeric fields extracted as metrics (`?metric_name=X`) |
+| `POST`  | `/api/v1/webhook/{custom}` | Custom configured endpoint (ExtractRule-based metric extraction) |
+
+```bash
+# Send a GitHub push event
+curl -X POST http://localhost:9090/api/v1/webhook/github \
+  -H 'X-GitHub-Event: push' \
+  -H 'Content-Type: application/json' \
+  -d '{"ref":"refs/heads/main","repository":{"full_name":"acme/app"},"pusher":{"name":"alice"},"commits":[{"id":"abc123","message":"fix"}]}'
+
+# Generic webhook: extract numeric fields as metrics
+curl -X POST 'http://localhost:9090/api/v1/webhook/generic?metric_name=my_service' \
+  -H 'Content-Type: application/json' \
+  -d '{"latency_ms":45.2,"error_rate":0.01}'
+```
+
+### Synthetic Monitoring API
+
+| Method  | Path | Description |
+|---------|------|-------------|
+| `GET`   | `/api/v1/synthetic` | List all synthetic tests with last result |
+| `POST`  | `/api/v1/synthetic` | Register and start a new synthetic test |
+| `GET`   | `/api/v1/synthetic/{name}/history` | Get full result history for a test |
+
+```bash
+# List all tests
+curl http://localhost:9090/api/v1/synthetic
+
+# Register a 2-step login test
+curl -X POST http://localhost:9090/api/v1/synthetic \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "login-flow",
+    "interval_seconds": 60,
+    "steps": [
+      {"name":"login","method":"POST","url":"https://api.example.com/auth","body":"{\"user\":\"test\"}","expected_status":200,"extract_vars":{"token":"$.token"}},
+      {"name":"profile","url":"https://api.example.com/me","headers":{"Authorization":"Bearer {token}"},"assert_body_contains":"email"}
+    ]
+  }'
+
+# View history
+curl http://localhost:9090/api/v1/synthetic/login-flow/history
+```
+
+### Dashboard Share API
+
+| Method   | Path | Description |
+|----------|------|-------------|
+| `POST`   | `/api/v1/dashboard/share` | Create a shareable read-only link |
+| `GET`    | `/api/v1/dashboard/shares` | List all share tokens |
+| `DELETE` | `/api/v1/dashboard/shares/{token}` | Revoke a token |
+| `GET`    | `/share/{token}` | View the read-only shared dashboard (HTML) |
+
+```bash
+# Create a link valid for 24 hours
+curl -X POST http://localhost:8080/api/v1/dashboard/share \
+  -H 'Content-Type: application/json' \
+  -d '{"label":"Weekly Review","ttl_seconds":86400}'
+# {"token":"3f9a...","label":"Weekly Review","created_at_ms":...,"expires_at_ms":...}
+
+# Access shared view
+open http://localhost:8080/share/3f9a...
+
+# Revoke
+curl -X DELETE http://localhost:8080/api/v1/dashboard/shares/3f9a...
+```
+
 ### Grafana SimpleJSON API
 
 | Method | Path | Description |
@@ -1396,8 +1531,15 @@ watchtower/
 │   ├── dashboard/
 │   │   ├── dashboard.go         # WebSocket server + static file handler
 │   │   ├── panels.go            # Custom panel store + panel CRUD HTTP API
+│   │   ├── share.go             # ShareToken, ShareStore, share/revoke API + read-only HTML
 │   │   └── static/
-│   │       └── index.html       # Single-page dashboard (6 tabs + custom panels)
+│   │       └── index.html       # Single-page dashboard (7 tabs + custom panels)
+│   ├── webhook/
+│   │   ├── receiver.go          # GitHub + generic + configured webhook receivers
+│   │   └── receiver_test.go
+│   ├── synthetic/
+│   │   ├── monitor.go           # Multi-step HTTP transaction monitor + API
+│   │   └── monitor_test.go
 │   ├── grafana/
 │   │   ├── api.go               # Grafana SimpleJSON data source protocol
 │   │   └── api_test.go
@@ -1414,7 +1556,7 @@ watchtower/
 ## Running Tests
 
 ```bash
-go test ./...                        # all packages (~429 tests)
+go test ./...                        # all packages (~456 tests)
 go test ./internal/auth/...          # auth middleware + key management (19 tests)
 go test ./internal/ingest/...        # ingest server + Prometheus parser (12 new)
 go test ./internal/registry/...      # agent registry + API (15 tests)

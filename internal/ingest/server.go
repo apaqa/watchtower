@@ -11,6 +11,8 @@ import (
 
 	"github.com/apaqa/watchtower/internal/alert"
 	"github.com/apaqa/watchtower/internal/admin"
+	"github.com/apaqa/watchtower/internal/synthetic"
+	"github.com/apaqa/watchtower/internal/webhook"
 	"github.com/apaqa/watchtower/internal/anomaly"
 	"github.com/apaqa/watchtower/internal/audit"
 	"github.com/apaqa/watchtower/internal/health"
@@ -245,6 +247,16 @@ func (s *Server) RegisterAuditStore(store *audit.Store) {
 func (s *Server) RegisterTenantStore(store *tenant.Store) {
 	s.tenantStore = store
 	tenant.RegisterRoutes(s.mux, store)
+}
+
+// RegisterWebhookHandler 注册 Webhook 接收端路由（必须在 Start 之前调用）
+func (s *Server) RegisterWebhookHandler(h *webhook.Handler) {
+	webhook.RegisterRoutes(s.mux, h)
+}
+
+// RegisterSyntheticMonitor 注册合成监控 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterSyntheticMonitor(m *synthetic.Monitor) {
+	synthetic.RegisterRoutes(s.mux, m)
 }
 
 // containsPrefix 检查 name 是否已以 prefix 开头

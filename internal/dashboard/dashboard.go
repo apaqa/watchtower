@@ -132,6 +132,12 @@ func (s *Server) SetPanelStore(ps *PanelStore) {
 	RegisterPanelRoutes(s.mux, ps)
 }
 
+// SetShareStore registers dashboard-sharing API routes on the dashboard server.
+// Must be called before Start.
+func (s *Server) SetShareStore(ss *ShareStore) {
+	RegisterShareRoutes(s.mux, ss)
+}
+
 // Start 启动 HTTP 服务和推送循环（应在 goroutine 中调用）
 func (s *Server) Start() error {
 	go s.broadcastLoop() // 后台每 5 秒向所有客户端推送最新指标

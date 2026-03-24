@@ -1360,6 +1360,32 @@
     </div>
   </div>
 
+  <!-- Synthetic Tests section -->
+  <div class="probe-panel" style="margin-top:1.5rem">
+    <div class="probe-panel-title">
+      Synthetic Tests
+      <span id="synth-summary" style="font-size:0.8rem;font-weight:400;color:var(--muted)"></span>
+    </div>
+    <div class="probe-toolbar">
+      <button id="synth-refresh-btn" onclick="fetchSyntheticTests()">↻ Refresh</button>
+    </div>
+    <table id="synth-table" style="width:100%;border-collapse:collapse;font-size:0.83rem;margin-top:0.5rem">
+      <thead>
+        <tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
+          <th style="padding:5px 8px">Name</th>
+          <th style="padding:5px 8px">Steps</th>
+          <th style="padding:5px 8px">Interval</th>
+          <th style="padding:5px 8px">Status</th>
+          <th style="padding:5px 8px">Duration</th>
+          <th style="padding:5px 8px">Last Run</th>
+        </tr>
+      </thead>
+      <tbody id="synth-tbody">
+        <tr><td colspan="6" style="padding:1rem;color:var(--muted);text-align:center">No synthetic tests configured</td></tr>
+      </tbody>
+    </table>
+  </div>
+
 </div><!-- /#tab-uptime -->
 
 <!-- Add Probe modal -->
@@ -1777,6 +1803,46 @@
           <tr><td colspan="3" style="text-align:center;color:var(--muted);padding:1rem">No schedule configured</td></tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Shared Dashboards section -->
+    <div class="slo-section-header" style="margin-top:1.5rem">
+      <span class="slo-section-label">Shared Dashboards</span>
+      <button onclick="fetchSharedDashboards()" style="padding:4px 12px;background:var(--accent);color:#0d1117;border:none;border-radius:5px;cursor:pointer;font-size:0.8rem">Refresh</button>
+    </div>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:0.5rem 0;align-items:center">
+      <input id="share-label" type="text" placeholder="Label" style="flex:1;min-width:140px;padding:5px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px;font-size:0.82rem">
+      <input id="share-ttl" type="number" placeholder="TTL seconds (0=∞)" min="0" style="width:180px;padding:5px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px;font-size:0.82rem">
+      <button id="share-create-btn" style="padding:5px 14px;background:var(--accent);color:#0d1117;border:none;border-radius:5px;cursor:pointer;font-size:0.82rem">Create Link</button>
+    </div>
+    <div id="share-created-msg" style="font-size:0.8rem;color:var(--green,#3fb950);min-height:1.2em;word-break:break-all"></div>
+    <div class="log-table-wrap" style="margin-top:0.4rem">
+      <table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+        <thead><tr style="border-bottom:1px solid var(--border);color:var(--muted)">
+          <th style="text-align:left;padding:4px 8px">Label</th>
+          <th style="text-align:left;padding:4px 8px">Token</th>
+          <th style="text-align:left;padding:4px 8px">Created</th>
+          <th style="text-align:left;padding:4px 8px">Expires</th>
+          <th style="text-align:left;padding:4px 8px">Action</th>
+        </tr></thead>
+        <tbody id="shares-tbody"><tr><td colspan="5" style="padding:8px;color:var(--muted);text-align:center">No shared links</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- Webhook Endpoints section -->
+    <div class="slo-section-header" style="margin-top:1.5rem">
+      <span class="slo-section-label">Webhook Endpoints</span>
+    </div>
+    <div style="margin-top:0.5rem;margin-bottom:1rem;font-size:0.83rem;color:var(--muted);display:flex;flex-direction:column;gap:0.4rem">
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        <code style="background:var(--bg);padding:3px 8px;border-radius:4px;font-size:0.8rem">POST /api/v1/webhook/github</code>
+        <span>GitHub push / PR / issue events → logs</span>
+      </div>
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        <code style="background:var(--bg);padding:3px 8px;border-radius:4px;font-size:0.8rem">POST /api/v1/webhook/generic?metric_name=X</code>
+        <span>Generic JSON → metrics (numeric fields auto-extracted)</span>
+      </div>
+      <div style="font-size:0.78rem;color:var(--muted)">Custom endpoints are registered via <code>webhooks:</code> in watchtower.yaml</div>
     </div>
 
   </div>
@@ -2483,13 +2549,15 @@ document.getElementById('probe-refresh-btn').addEventListener('click', fetchProb
 // Refresh when switching to the Endpoints tab
 document.querySelectorAll('.tab-btn').forEach(btn => {
   if (btn.dataset.tab === 'uptime') {
-    btn.addEventListener('click', fetchProbes);
+    btn.addEventListener('click', () => { fetchProbes(); fetchSyntheticTests(); });
   }
 });
 
 // Initial load + refresh every 30 seconds
 fetchProbes();
 setInterval(fetchProbes, 30000);
+fetchSyntheticTests();
+setInterval(fetchSyntheticTests, 30000);
 
 // ── Distributed traces logic ───────────────────────────────────────────────
 const TRACES_API = 'http://localhost:9090/api/v1/traces';
@@ -4123,6 +4191,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     fetchQuotas();
     fetchPlugins();
     fetchAuditLog();
+    fetchSharedDashboards();
   });
 });
 
@@ -4270,6 +4339,89 @@ async function pluginAction(name, action) {
     setTimeout(fetchPlugins, 300);
   } catch (e) { /* ignore */ }
 }
+
+// ── Synthetic Tests ───────────────────────────────────────────────────────────
+async function fetchSyntheticTests() {
+  try {
+    const list = await apiFetch(`${INGEST_BASE}/api/v1/synthetic`);
+    const tbody = document.getElementById('synth-tbody');
+    const summary = document.getElementById('synth-summary');
+    if (!list || list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="padding:1rem;color:var(--muted);text-align:center">No synthetic tests configured</td></tr>';
+      if (summary) summary.textContent = '';
+      return;
+    }
+    const passed = list.filter(t => t.last_result && t.last_result.passed).length;
+    if (summary) summary.textContent = `${passed}/${list.length} passing`;
+    tbody.innerHTML = list.map(t => {
+      const r = t.last_result;
+      const status = r ? (r.passed ? '<span style="color:var(--green,#3fb950)">✓ PASS</span>' : '<span style="color:var(--red)">✗ FAIL</span>') : '<span style="color:var(--muted)">Pending</span>';
+      const dur = r ? `${r.duration_ms}ms` : '—';
+      const ts = r ? new Date(r.started_at_ms).toLocaleTimeString() : '—';
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px;font-weight:600">${t.name}</td>
+        <td style="padding:5px 8px;color:var(--muted)">${t.step_count}</td>
+        <td style="padding:5px 8px;color:var(--muted)">${t.interval_seconds}s</td>
+        <td style="padding:5px 8px">${status}</td>
+        <td style="padding:5px 8px;color:var(--muted)">${dur}</td>
+        <td style="padding:5px 8px;color:var(--muted)">${ts}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) { /* network error */ }
+}
+
+// ── Shared Dashboards ─────────────────────────────────────────────────────────
+async function fetchSharedDashboards() {
+  try {
+    const list = await apiFetch('/api/v1/dashboard/shares');
+    const tbody = document.getElementById('shares-tbody');
+    if (!list || list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="padding:8px;color:var(--muted);text-align:center">No shared links</td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(s => {
+      const created = new Date(s.created_at_ms).toLocaleString();
+      const expires = s.expires_at_ms > 0 ? new Date(s.expires_at_ms).toLocaleString() : '∞';
+      const link = `${location.origin}/share/${s.token}`;
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:4px 8px">${s.label || '—'}</td>
+        <td style="padding:4px 8px;font-family:monospace;font-size:0.75rem"><a href="${link}" target="_blank" style="color:var(--accent)">${s.token.slice(0,12)}…</a></td>
+        <td style="padding:4px 8px;color:var(--muted);font-size:0.78rem">${created}</td>
+        <td style="padding:4px 8px;color:var(--muted);font-size:0.78rem">${expires}</td>
+        <td style="padding:4px 8px"><button onclick="revokeShare('${s.token}')" style="padding:2px 8px;background:var(--red);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem">Revoke</button></td>
+      </tr>`;
+    }).join('');
+  } catch (e) { /* network error */ }
+}
+
+async function revokeShare(token) {
+  try {
+    await apiFetch(`/api/v1/dashboard/shares/${token}`, { method: 'DELETE' });
+    fetchSharedDashboards();
+  } catch (e) { /* ignore */ }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const shareBtn = document.getElementById('share-create-btn');
+  if (shareBtn) {
+    shareBtn.addEventListener('click', async () => {
+      const label = document.getElementById('share-label').value.trim();
+      const ttl = parseInt(document.getElementById('share-ttl').value || '0', 10);
+      try {
+        const st = await apiFetch('/api/v1/dashboard/share', {
+          method: 'POST',
+          body: JSON.stringify({ label, ttl_seconds: ttl }),
+        });
+        const msg = document.getElementById('share-created-msg');
+        if (msg) msg.textContent = `Link: ${location.origin}/share/${st.token}`;
+        fetchSharedDashboards();
+      } catch (e) {
+        const msg = document.getElementById('share-created-msg');
+        if (msg) msg.textContent = 'Failed to create link';
+      }
+    });
+  }
+});
 
 function renderQuotas(list) {
   const container = document.getElementById('quota-bars');

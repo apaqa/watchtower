@@ -21,6 +21,42 @@ type Config struct {
 	Quotas            []QuotaConfig       `yaml:"quotas"`       // 自定义资源配额
 	RateLimit         RateLimitConfig     `yaml:"rate_limit"`   // API 速率限制
 	Plugins           []PluginConfig      `yaml:"plugins"`      // 插件配置（覆盖内置默认值）
+	Webhooks          []WebhookReceiverConfig `yaml:"webhooks"` // Webhook 接收端配置
+	SyntheticTests    []SyntheticTestConfig   `yaml:"synthetic_tests"` // 合成监控测试
+}
+
+// WebhookReceiverConfig 描述一个自定义 Webhook 接收端
+type WebhookReceiverConfig struct {
+	Name  string                  `yaml:"name"`
+	Path  string                  `yaml:"path"`
+	Rules []WebhookExtractRule    `yaml:"extract_rules"`
+}
+
+// WebhookExtractRule 描述从 Webhook JSON 提取指标的规则
+type WebhookExtractRule struct {
+	JSONPath      string            `yaml:"json_path"`
+	MetricName    string            `yaml:"metric_name"`
+	LabelMappings map[string]string `yaml:"label_mappings"`
+}
+
+// SyntheticTestConfig 描述一个合成监控测试
+type SyntheticTestConfig struct {
+	Name     string                    `yaml:"name"`
+	Interval int                       `yaml:"interval_seconds"`
+	Timeout  int                       `yaml:"timeout_ms"`
+	Steps    []SyntheticStepConfig     `yaml:"steps"`
+}
+
+// SyntheticStepConfig 描述合成测试中的单个步骤
+type SyntheticStepConfig struct {
+	Name           string            `yaml:"name"`
+	Method         string            `yaml:"method"`
+	URL            string            `yaml:"url"`
+	Headers        map[string]string `yaml:"headers"`
+	Body           string            `yaml:"body"`
+	ExpectedStatus int               `yaml:"expected_status"`
+	AssertContains string            `yaml:"assert_body_contains"`
+	ExtractVars    map[string]string `yaml:"extract_vars"`
 }
 
 // QuotaConfig 描述单个资源类型的配额上限
