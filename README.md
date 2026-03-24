@@ -181,6 +181,21 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - `GET /api/v1/capacity` — returns full CapacityReport for all system metrics
 - Dashboard **Forecasting & Capacity** section in Metrics tab: capacity summary cards (CPU/Memory/Disk) with trend arrow (↑↓→) and health badge; interactive forecast widget with dashed prediction line chart
 
+### Incident Management
+
+- Create, update, and resolve **incidents** with severity (critical/major/minor) and status (investigating/identified/monitoring/resolved)
+- Full **timeline** tracking: created, updated, assigned, resolved, and comment events
+- Auto-create incidents when a monitored alert fires continuously for **> 5 minutes**
+- **Auto-assign** to the current on-call person when an incident is created
+- Notify the on-call person via the configured notification channel
+
+### On-Call Scheduling
+
+- Define **rotation schedules** with per-user time slots (start_hour, end_hour, days of week)
+- Timezone-aware: schedule is evaluated in the configured IANA timezone
+- Current on-call person displayed in a persistent **header widget**
+- Clicking the widget navigates to the Incidents tab with full schedule view
+
 ### Grafana Integration
 
 - Implements the **Grafana SimpleJSON** data source protocol
@@ -950,6 +965,58 @@ curl "http://localhost:9090/api/v1/forecast?metric=disk_usage_percent&threshold=
 curl "http://localhost:9090/api/v1/capacity"
 ```
 
+### Incident Management API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST`  | `/api/v1/incidents` | Create a new incident |
+| `GET`   | `/api/v1/incidents` | List incidents (filter: `?status=&severity=`) |
+| `GET`   | `/api/v1/incidents/{id}` | Full detail with timeline |
+| `PUT`   | `/api/v1/incidents/{id}` | Update status / severity / assignee |
+| `POST`  | `/api/v1/incidents/{id}/comment` | Add a timeline comment |
+| `PATCH` | `/api/v1/incidents/{id}/resolve` | Resolve the incident |
+
+```bash
+# Create incident
+curl -X POST http://localhost:9090/api/v1/incidents \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Database latency spike","severity":"critical","author":"alice"}'
+
+# List open incidents
+curl "http://localhost:9090/api/v1/incidents?status=investigating"
+
+# Add comment
+curl -X POST http://localhost:9090/api/v1/incidents/inc-123/comment \
+  -H 'Content-Type: application/json' \
+  -d '{"author":"bob","message":"Root cause identified: slow query"}'
+
+# Resolve
+curl -X PATCH http://localhost:9090/api/v1/incidents/inc-123/resolve \
+  -H 'Content-Type: application/json' -d '{"author":"alice"}'
+```
+
+### On-Call Schedule API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/api/v1/oncall` | Current on-call person and shift end time |
+| `GET`  | `/api/v1/oncall/schedule` | Full rotation schedule |
+| `POST` | `/api/v1/oncall/schedule` | Set or update the rotation schedule |
+
+```bash
+# Get current on-call
+curl http://localhost:9090/api/v1/oncall
+
+# Set schedule
+curl -X POST http://localhost:9090/api/v1/oncall/schedule \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"default","timezone":"UTC","rotation":[
+    {"user_name":"alice","start_hour":9,"end_hour":17,"days":["mon","tue","wed","thu","fri"]},
+    {"user_name":"bob","start_hour":17,"end_hour":24,"days":["mon","tue","wed","thu","fri"]},
+    {"user_name":"carol","start_hour":0,"end_hour":24,"days":["sat","sun"]}
+  ]}'
+```
+
 ### Grafana SimpleJSON API
 
 | Method | Path | Description |
@@ -1169,7 +1236,7 @@ watchtower/
 ## Running Tests
 
 ```bash
-go test ./...                        # all packages (~350 tests)
+go test ./...                        # all packages (~370 tests)
 go test ./internal/auth/...          # auth middleware + key management (19 tests)
 go test ./internal/ingest/...        # ingest server + Prometheus parser (12 new)
 go test ./internal/registry/...      # agent registry + API (15 tests)

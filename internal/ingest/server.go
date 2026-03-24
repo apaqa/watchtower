@@ -12,6 +12,8 @@ import (
 	"github.com/apaqa/watchtower/internal/alert"
 	"github.com/apaqa/watchtower/internal/admin"
 	"github.com/apaqa/watchtower/internal/anomaly"
+	"github.com/apaqa/watchtower/internal/incident"
+	"github.com/apaqa/watchtower/internal/oncall"
 	"github.com/apaqa/watchtower/internal/auth"
 	"github.com/apaqa/watchtower/internal/correlation"
 	"github.com/apaqa/watchtower/internal/forecast"
@@ -171,6 +173,16 @@ func (s *Server) RegisterRetentionEngine(re *tsdb.RetentionEngine) {
 // RegisterGrafanaHandler 注册 Grafana SimpleJSON 数据源 API 路由（必须在 Start 之前调用）
 func (s *Server) RegisterGrafanaHandler(h *grafana.Handler) {
 	grafana.RegisterRoutes(s.mux, h)
+}
+
+// RegisterIncidentStore 注册事故管理 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterIncidentStore(store *incident.Store) {
+	incident.RegisterRoutes(s.mux, store)
+}
+
+// RegisterOncallScheduler 注册值班排班 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterOncallScheduler(sc *oncall.Scheduler) {
+	oncall.RegisterRoutes(s.mux, sc)
 }
 
 // RegisterLogStore 注入日志存储并注册日志 API 路由（必须在 Start 之前调用）

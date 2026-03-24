@@ -1086,6 +1086,12 @@
         Save
       </button>
     </div>
+    <!-- 当前值班人卡片 -->
+    <div id="oncall-widget" title="Click to view full schedule" onclick="document.querySelector('[data-tab=incidents]').click()"
+      style="cursor:pointer;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:0.78rem;display:flex;align-items:center;gap:5px;user-select:none">
+      <span style="color:var(--muted)">On-Call:</span>
+      <span id="oncall-name" style="font-weight:600">—</span>
+    </div>
     <div id="status-dot"></div>
     <div id="status-text">Disconnected</div>
   </div>
@@ -1101,6 +1107,7 @@
   <button class="tab-btn" data-tab="servicemap">Service Map</button>
   <button class="tab-btn" data-tab="processes">Processes</button>
   <button class="tab-btn" data-tab="admin">Admin</button>
+  <button class="tab-btn" data-tab="incidents">Incidents</button>
 </nav>
 
 <!-- ── Metrics tab ──────────────────────────────────────────────────────── -->
@@ -1613,6 +1620,107 @@
         </tbody>
       </table>
     </div>
+  </div>
+</div>
+
+<!-- ── Incidents tab ─────────────────────────────────────────────────────── -->
+<div id="tab-incidents" class="tab-panel">
+  <div style="padding:1.5rem">
+
+    <!-- 过滤器 + 新建按钮 -->
+    <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:1rem">
+      <span class="slo-section-label" style="font-size:1rem">Incidents</span>
+      <select id="inc-filter-status" style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px;font-size:0.82rem">
+        <option value="">All Status</option>
+        <option value="investigating">Investigating</option>
+        <option value="identified">Identified</option>
+        <option value="monitoring">Monitoring</option>
+        <option value="resolved">Resolved</option>
+      </select>
+      <select id="inc-filter-sev" style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px;font-size:0.82rem">
+        <option value="">All Severity</option>
+        <option value="critical">Critical</option>
+        <option value="major">Major</option>
+        <option value="minor">Minor</option>
+      </select>
+      <button id="inc-filter-btn" style="padding:4px 12px;background:var(--accent);color:#0d1117;border:none;border-radius:5px;cursor:pointer;font-size:0.8rem">Filter</button>
+      <button id="inc-create-btn" style="margin-left:auto;padding:4px 14px;background:var(--red);color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:0.8rem;font-weight:600">+ New Incident</button>
+    </div>
+
+    <!-- 事故列表 -->
+    <div id="inc-list-view">
+      <table style="width:100%;border-collapse:collapse;font-size:0.83rem">
+        <thead>
+          <tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
+            <th style="padding:6px 8px">Severity</th>
+            <th style="padding:6px 8px">Title</th>
+            <th style="padding:6px 8px">Status</th>
+            <th style="padding:6px 8px">Assigned To</th>
+            <th style="padding:6px 8px">Duration</th>
+            <th style="padding:6px 8px"></th>
+          </tr>
+        </thead>
+        <tbody id="inc-tbody">
+          <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 事故详情视图（点击某行展开） -->
+    <div id="inc-detail-view" style="display:none">
+      <button id="inc-back-btn" style="margin-bottom:1rem;padding:4px 12px;background:var(--panel);border:1px solid var(--border);border-radius:5px;cursor:pointer;font-size:0.8rem">← Back</button>
+      <div id="inc-detail-header" style="margin-bottom:1rem"></div>
+
+      <!-- 状态更新 + 评论 -->
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
+        <div style="flex:1;min-width:220px">
+          <div style="font-size:0.82rem;color:var(--muted);margin-bottom:4px">Update Status</div>
+          <div style="display:flex;gap:6px">
+            <select id="inc-status-select" style="flex:1;padding:5px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px;font-size:0.82rem">
+              <option value="investigating">Investigating</option>
+              <option value="identified">Identified</option>
+              <option value="monitoring">Monitoring</option>
+              <option value="resolved">Resolved</option>
+            </select>
+            <button id="inc-status-btn" style="padding:5px 10px;background:var(--accent);color:#0d1117;border:none;border-radius:5px;cursor:pointer;font-size:0.8rem">Update</button>
+          </div>
+        </div>
+        <div style="flex:1;min-width:220px">
+          <div style="font-size:0.82rem;color:var(--muted);margin-bottom:4px">Add Comment</div>
+          <div style="display:flex;gap:6px">
+            <input id="inc-comment-input" type="text" placeholder="Comment…"
+              style="flex:1;padding:5px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px;font-size:0.82rem" />
+            <button id="inc-comment-btn" style="padding:5px 10px;background:var(--panel);border:1px solid var(--border);border-radius:5px;cursor:pointer;font-size:0.8rem">Post</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 时间线 -->
+      <div style="font-size:0.82rem;color:var(--muted);margin-bottom:6px">Timeline</div>
+      <div id="inc-timeline" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+
+    <!-- 值班排班卡片 -->
+    <div style="margin-top:2rem">
+      <div class="slo-section-header">
+        <span class="slo-section-label">On-Call Schedule</span>
+        <button id="oncall-edit-btn" style="padding:4px 10px;background:var(--panel);border:1px solid var(--border);border-radius:5px;cursor:pointer;font-size:0.78rem">Edit Schedule</button>
+      </div>
+      <div id="oncall-current" style="margin:0.5rem 0 1rem;font-size:0.85rem"></div>
+      <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+        <thead>
+          <tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
+            <th style="padding:5px 8px">User</th>
+            <th style="padding:5px 8px">Days</th>
+            <th style="padding:5px 8px">Hours</th>
+          </tr>
+        </thead>
+        <tbody id="oncall-tbody">
+          <tr><td colspan="3" style="text-align:center;color:var(--muted);padding:1rem">No schedule configured</td></tr>
+        </tbody>
+      </table>
+    </div>
+
   </div>
 </div>
 
@@ -3743,6 +3851,219 @@ setInterval(() => {
     fetchAdminStatus();
   }
 }, 30000);
+
+// ── Incidents & On-Call ───────────────────────────────────────────────────────
+
+let currentIncidentID = null;
+
+const sevColor = { critical: 'var(--red)', major: '#f0a500', minor: 'var(--accent)' };
+const statusColor = { investigating: 'var(--red)', identified: '#f0a500', monitoring: 'var(--accent)', resolved: 'var(--muted)' };
+
+function incSevBadge(sev) {
+  return `<span style="padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:700;background:${sevColor[sev]||'var(--muted)'};color:#0d1117">${sev}</span>`;
+}
+function incStatusBadge(st) {
+  return `<span style="padding:2px 8px;border-radius:10px;font-size:0.75rem;background:transparent;border:1px solid ${statusColor[st]||'var(--border)'};color:${statusColor[st]||'var(--text)'}">${st}</span>`;
+}
+function incDuration(createdAt) {
+  const ms = Date.now() - new Date(createdAt).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ${mins % 60}m`;
+  return `${Math.floor(hrs / 24)}d ${hrs % 24}h`;
+}
+
+async function fetchIncidents() {
+  const status = document.getElementById('inc-filter-status').value;
+  const sev = document.getElementById('inc-filter-sev').value;
+  let url = `${INGEST_BASE}/api/v1/incidents`;
+  const params = [];
+  if (status) params.push(`status=${status}`);
+  if (sev) params.push(`severity=${sev}`);
+  if (params.length) url += '?' + params.join('&');
+  try {
+    const res = await apiFetch(url);
+    const list = await res.json();
+    renderIncidentList(list);
+  } catch (e) { /* ignore */ }
+}
+
+function renderIncidentList(list) {
+  const tbody = document.getElementById('inc-tbody');
+  if (!list || list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1.5rem">No incidents</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(inc => `
+    <tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="showIncidentDetail('${inc.id}')">
+      <td style="padding:7px 8px">${incSevBadge(inc.severity)}</td>
+      <td style="padding:7px 8px;font-weight:600">${inc.title}</td>
+      <td style="padding:7px 8px">${incStatusBadge(inc.status)}</td>
+      <td style="padding:7px 8px;color:var(--muted)">${inc.assigned_to || '—'}</td>
+      <td style="padding:7px 8px;color:var(--muted)">${incDuration(inc.created_at)}</td>
+      <td style="padding:7px 8px">
+        ${inc.status !== 'resolved' ? `<button onclick="event.stopPropagation();resolveIncident('${inc.id}')" style="padding:2px 8px;background:transparent;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:0.75rem;color:var(--accent)">Resolve</button>` : ''}
+      </td>
+    </tr>`).join('');
+}
+
+async function showIncidentDetail(id) {
+  try {
+    const res = await apiFetch(`${INGEST_BASE}/api/v1/incidents/${id}`);
+    const inc = await res.json();
+    currentIncidentID = id;
+    document.getElementById('inc-list-view').style.display = 'none';
+    document.getElementById('inc-detail-view').style.display = 'block';
+    document.getElementById('inc-status-select').value = inc.status;
+    document.getElementById('inc-detail-header').innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        ${incSevBadge(inc.severity)} ${incStatusBadge(inc.status)}
+        <span style="font-weight:700;font-size:1rem">${inc.title}</span>
+        <span style="color:var(--muted);font-size:0.82rem">Assigned: ${inc.assigned_to || '—'}</span>
+        <span style="color:var(--muted);font-size:0.82rem">Duration: ${incDuration(inc.created_at)}</span>
+      </div>`;
+    renderTimeline(inc.timeline || []);
+  } catch (e) { /* ignore */ }
+}
+
+function renderTimeline(events) {
+  const icons = { created: '🟢', updated: '✏️', assigned: '👤', resolved: '✅', comment: '💬' };
+  document.getElementById('inc-timeline').innerHTML = events.map(ev => `
+    <div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:1rem;min-width:20px">${icons[ev.type] || '•'}</span>
+      <div>
+        <span style="font-weight:600;font-size:0.82rem">${ev.author}</span>
+        <span style="color:var(--muted);font-size:0.78rem;margin-left:6px">${new Date(ev.timestamp).toLocaleString()}</span>
+        <div style="font-size:0.82rem;margin-top:2px">${ev.message}</div>
+      </div>
+    </div>`).join('');
+}
+
+document.getElementById('inc-back-btn').addEventListener('click', () => {
+  document.getElementById('inc-detail-view').style.display = 'none';
+  document.getElementById('inc-list-view').style.display = 'block';
+  currentIncidentID = null;
+});
+
+document.getElementById('inc-status-btn').addEventListener('click', async () => {
+  if (!currentIncidentID) return;
+  const status = document.getElementById('inc-status-select').value;
+  try {
+    await apiFetch(`${INGEST_BASE}/api/v1/incidents/${currentIncidentID}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, author: 'dashboard' })
+    });
+    showIncidentDetail(currentIncidentID);
+  } catch (e) { /* ignore */ }
+});
+
+document.getElementById('inc-comment-btn').addEventListener('click', async () => {
+  if (!currentIncidentID) return;
+  const msg = document.getElementById('inc-comment-input').value.trim();
+  if (!msg) return;
+  try {
+    await apiFetch(`${INGEST_BASE}/api/v1/incidents/${currentIncidentID}/comment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, author: 'dashboard' })
+    });
+    document.getElementById('inc-comment-input').value = '';
+    showIncidentDetail(currentIncidentID);
+  } catch (e) { /* ignore */ }
+});
+
+async function resolveIncident(id) {
+  try {
+    await apiFetch(`${INGEST_BASE}/api/v1/incidents/${id}/resolve`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ author: 'dashboard' })
+    });
+    fetchIncidents();
+  } catch (e) { /* ignore */ }
+}
+
+document.getElementById('inc-filter-btn').addEventListener('click', fetchIncidents);
+
+// 新建事故弹窗
+document.getElementById('inc-create-btn').addEventListener('click', () => {
+  const title = prompt('Incident title:');
+  if (!title) return;
+  const sev = prompt('Severity (critical/major/minor):', 'major');
+  if (!sev) return;
+  apiFetch(`${INGEST_BASE}/api/v1/incidents`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, severity: sev, author: 'dashboard' })
+  }).then(() => fetchIncidents()).catch(() => {});
+});
+
+// ── On-Call ──────────────────────────────────────────────────────────────────
+
+async function fetchOncall() {
+  try {
+    const res = await apiFetch(`${INGEST_BASE}/api/v1/oncall`);
+    const info = await res.json();
+    const widget = document.getElementById('oncall-name');
+    const currentDiv = document.getElementById('oncall-current');
+    if (info.has_oncall) {
+      const until = new Date(info.until_ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (widget) widget.textContent = `${info.user} (until ${until})`;
+      if (currentDiv) currentDiv.innerHTML = `<span style="color:var(--accent);font-weight:600">${info.user}</span> is on-call until ${until}`;
+    } else {
+      if (widget) widget.textContent = '—';
+      if (currentDiv) currentDiv.innerHTML = '<span style="color:var(--muted)">No one on-call right now</span>';
+    }
+  } catch (e) {
+    const w = document.getElementById('oncall-name');
+    if (w) w.textContent = '—';
+  }
+}
+
+async function fetchOncallSchedule() {
+  try {
+    const res = await apiFetch(`${INGEST_BASE}/api/v1/oncall/schedule`);
+    const sc = await res.json();
+    const tbody = document.getElementById('oncall-tbody');
+    if (!sc || !sc.rotation || sc.rotation.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:1rem">No schedule configured</td></tr>';
+      return;
+    }
+    tbody.innerHTML = sc.rotation.map(slot => `
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px;font-weight:600">${slot.user_name}</td>
+        <td style="padding:5px 8px;color:var(--muted)">${(slot.days||[]).join(', ')}</td>
+        <td style="padding:5px 8px;color:var(--muted)">${slot.start_hour}:00 – ${slot.end_hour === 24 ? '00:00' : slot.end_hour + ':00'}</td>
+      </tr>`).join('');
+  } catch (e) { /* ignore */ }
+}
+
+document.getElementById('oncall-edit-btn').addEventListener('click', () => {
+  const json = prompt('Paste schedule JSON (OnCallSchedule):', '{"name":"default","timezone":"UTC","rotation":[{"user_name":"alice","start_hour":9,"end_hour":17,"days":["mon","tue","wed","thu","fri"]}]}');
+  if (!json) return;
+  try {
+    const sc = JSON.parse(json);
+    apiFetch(`${INGEST_BASE}/api/v1/oncall/schedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sc)
+    }).then(() => { fetchOncall(); fetchOncallSchedule(); }).catch(() => {});
+  } catch (e) { alert('Invalid JSON'); }
+});
+
+// Incidents tab 切换时加载数据
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  if (btn.dataset.tab === 'incidents') btn.addEventListener('click', () => {
+    fetchIncidents();
+    fetchOncall();
+    fetchOncallSchedule();
+  });
+});
+
+// 页面启动时获取值班信息（用于 header 小部件）
+fetchOncall();
 </script>
 
 <!-- ── Add Rule modal ───────────────────────────────────────────────────────── -->

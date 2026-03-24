@@ -19,6 +19,8 @@ import (
 	"github.com/apaqa/watchtower/internal/correlation"
 	"github.com/apaqa/watchtower/internal/forecast"
 	"github.com/apaqa/watchtower/internal/grafana"
+	"github.com/apaqa/watchtower/internal/incident"
+	"github.com/apaqa/watchtower/internal/oncall"
 	"github.com/apaqa/watchtower/internal/dashboard"
 	"github.com/apaqa/watchtower/internal/export"
 	"github.com/apaqa/watchtower/internal/ingest"
@@ -131,6 +133,15 @@ func main() {
 	forecaster := forecast.New(db)
 	grafanaHandler := grafana.New(db, alertEng)
 
+	// 初始化值班排班器和事故存储
+	oncallScheduler := oncall.New()
+	incidentStore := incident.New()
+	incidentStore.SetAlertEngine(alertEng)
+	incidentStore.SetOnCallFn(oncallScheduler.CurrentOnCallName)
+	incidentStore.SetNotifyRouter(notifyRouter)
+	incidentStore.Start()
+	defer incidentStore.Stop()
+
 	// 初始化降采样器和保留策略引擎
 	downsampler := tsdb.NewDownsampler(db)
 	downsampler.Start()
@@ -224,6 +235,8 @@ func main() {
 	ingestSrv.RegisterRetentionEngine(retentionEngine)
 	ingestSrv.RegisterAdminHandler(adminHandler)
 	ingestSrv.RegisterGrafanaHandler(grafanaHandler)
+	ingestSrv.RegisterIncidentStore(incidentStore)
+	ingestSrv.RegisterOncallScheduler(oncallScheduler)
 	ingestSrv.RegisterKeyStore(keyStore)
 	go func() {
 		if err := ingestSrv.Start(); err != nil {
@@ -300,6 +313,8 @@ func main() {
 	fmt.Printf("Retain:  %s/api/v1/retention\n", base)
 	fmt.Printf("Admin:   %s/api/v1/admin/status\n", base)
 	fmt.Printf("Grafana: %s/api/grafana/\n", base)
+	fmt.Printf("Incidents:%s/api/v1/incidents\n", base)
+	fmt.Printf("OnCall:  %s/api/v1/oncall\n", base)
 	fmt.Printf("Scrape:  %s/metrics  (Prometheus scrape endpoint)\n", base)
 	fmt.Printf("Prom:    %s/api/v1/metrics/prometheus  (Prometheus push)\n", base)
 	fmt.Printf("Panels:  http://localhost:%d/api/v1/dashboard/panels\n", cfg.Server.DashboardPort)
