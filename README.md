@@ -145,6 +145,30 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - **Auto-correlation**: `GET /api/v1/correlate/auto?metric=<name>` scans all other metrics and returns the top 5 most correlated (by |r|)
 - Dashboard **Correlations** widget in Metrics tab: two metric dropdowns, window selector, scatter chart, "Auto-correlate" button
 
+### Downsampling
+- Automatic background aggregation of high-resolution raw data into lower-resolution summaries (runs every 5 minutes)
+- Three tiers: raw (5s interval, 1h retention) → `metric:1m` (1-minute averages, 24h retention) → `metric:5m` (5-minute averages, 7-day retention)
+- Downsampled series stored with the same labels as the source, using name suffixes `:1m` / `:5m`
+- Bucket timestamps are always aligned to minute / 5-minute boundaries; only completed buckets are written (no partial-bucket bias)
+- Existing downsampled points are never overwritten — only new completed buckets are appended
+
+### Retention Policies
+- Three built-in policies: `raw` (≤1h), `1m-ds` (≤24h), `5m-ds` (≤7d) — aligned with the downsampling tiers
+- Custom policies configurable in `watchtower.yaml` under `retention_policies:` — each with `name`, `match_pattern` (regex), `max_age_seconds`, `max_points_per_series`
+- Custom policies take precedence over built-in policies when both match a series name
+- Background goroutine enforces all policies every 10 minutes; also callable on-demand via Admin GC API
+- `GET /api/v1/retention` — list all policies (built-in + custom)
+- `POST /api/v1/retention` — create a custom policy
+- `DELETE /api/v1/retention/{name}` — delete a custom policy (built-in policies are protected)
+
+### Admin API
+- `GET /api/v1/admin/status` — full system status: uptime, version, Go version, goroutine count, heap memory, TSDB series count, total data points
+- `POST /api/v1/admin/gc` — force TSDB garbage collection + Go runtime GC
+- `POST /api/v1/admin/snapshot` — flush TSDB data to disk immediately (no-op when storage is disabled)
+- `GET /api/v1/admin/config` — running config with API key values redacted (`***REDACTED***`)
+- `POST /api/v1/admin/reload` — re-parse `watchtower.yaml` and hot-update server/agent/retention fields (alert rules and endpoints require restart)
+- Dashboard **Admin** tab: system info cards, Force GC / Snapshot / Reload Config buttons, retention policy table with inline add/delete — auto-refreshes every 30 seconds
+
 ### Resource Forecasting & Capacity Planning
 - **Linear regression** (`y = mx + b`) fitted over the most recent 30 minutes of TSDB data
 - **ForecastResult**: metric name, current value, predicted 1h / 24h / 7d, trend direction, confidence score (R²)
@@ -862,6 +886,43 @@ Valid `window` values: `5m` `15m` `30m` `1h` `6h` `1d`
 | `GET` | `/api/v1/forecast?metric=<name>&threshold=<value>` | Exhaustion estimate — time until metric reaches threshold |
 | `GET` | `/api/v1/capacity` | Full capacity report for CPU, Memory, and Disk |
 
+### Downsampling & Retention
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/retention` | List all retention policies (built-in + custom) |
+| `POST` | `/api/v1/retention` | Create a custom retention policy |
+| `DELETE` | `/api/v1/retention/{name}` | Delete a custom retention policy |
+
+### Admin
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/admin/status` | System status (uptime, Go version, goroutines, heap, TSDB stats) |
+| `POST` | `/api/v1/admin/gc` | Force TSDB + Go runtime garbage collection |
+| `POST` | `/api/v1/admin/snapshot` | Flush TSDB to disk immediately |
+| `GET` | `/api/v1/admin/config` | Running config (API keys redacted) |
+| `POST` | `/api/v1/admin/reload` | Hot-reload `watchtower.yaml` (server/agent/retention fields) |
+
+```bash
+# System status
+curl http://localhost:9090/api/v1/admin/status
+
+# Force GC
+curl -X POST http://localhost:9090/api/v1/admin/gc
+
+# List retention policies
+curl http://localhost:9090/api/v1/retention
+
+# Add a custom 2-hour retention policy for debug metrics
+curl -X POST http://localhost:9090/api/v1/retention \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"debug-short","match_pattern":"^debug_.*","max_age_seconds":7200}'
+
+# Delete a custom policy
+curl -X DELETE http://localhost:9090/api/v1/retention/debug-short
+```
+
 ```bash
 # Forecast CPU for 1h/24h/7d
 curl "http://localhost:9090/api/v1/forecast?metric=cpu_usage_percent"
@@ -1057,7 +1118,7 @@ watchtower/
 ## Running Tests
 
 ```bash
-go test ./...                        # all packages (~305 tests)
+go test ./...                        # all packages (~330 tests)
 go test ./internal/auth/...          # auth middleware + key management (19 tests)
 go test ./internal/ingest/...        # ingest server + Prometheus parser (12 new)
 go test ./internal/registry/...      # agent registry + API (15 tests)

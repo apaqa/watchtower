@@ -1100,6 +1100,7 @@
   <button class="tab-btn" data-tab="agents">Agents</button>
   <button class="tab-btn" data-tab="servicemap">Service Map</button>
   <button class="tab-btn" data-tab="processes">Processes</button>
+  <button class="tab-btn" data-tab="admin">Admin</button>
 </nav>
 
 <!-- ── Metrics tab ──────────────────────────────────────────────────────── -->
@@ -1561,6 +1562,54 @@
         </thead>
         <tbody id="proc-tbody">
           <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:1rem">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── Admin tab ─────────────────────────────────────────────────────────── -->
+<div id="tab-admin" class="tab-panel">
+  <div style="padding:1.5rem">
+    <!-- 系统信息卡片 -->
+    <div class="slo-section-header">
+      <span class="slo-section-label">System Status</span>
+      <button id="admin-refresh-btn" style="padding:4px 12px;background:var(--accent);color:#0d1117;border:none;border-radius:5px;cursor:pointer;font-size:0.8rem">Refresh</button>
+    </div>
+    <div id="admin-status-cards" style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-top:0.5rem;margin-bottom:1.25rem"></div>
+
+    <!-- 操作按钮 -->
+    <div class="slo-section-header" style="margin-top:0.5rem">
+      <span class="slo-section-label">Admin Actions</span>
+    </div>
+    <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.5rem;margin-bottom:1.25rem">
+      <button id="admin-gc-btn" class="btn-secondary">Force GC</button>
+      <button id="admin-snap-btn" class="btn-secondary">Snapshot</button>
+      <button id="admin-reload-btn" class="btn-secondary">Reload Config</button>
+    </div>
+    <div id="admin-action-msg" style="font-size:0.82rem;color:var(--muted);min-height:1.2em"></div>
+
+    <!-- 保留策略表格 -->
+    <div class="slo-section-header" style="margin-top:1.25rem">
+      <span class="slo-section-label">Retention Policies</span>
+    </div>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem;margin-bottom:0.5rem;align-items:flex-end">
+      <input id="rp-name" type="text" placeholder="name" style="width:120px;padding:5px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px">
+      <input id="rp-pattern" type="text" placeholder="match_pattern (regex)" style="flex:1;min-width:160px;padding:5px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px">
+      <input id="rp-age" type="number" placeholder="max_age_seconds" min="0" style="width:150px;padding:5px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px">
+      <input id="rp-points" type="number" placeholder="max_points (0=∞)" min="0" style="width:150px;padding:5px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:5px">
+      <button id="rp-add-btn" style="padding:5px 14px;background:var(--accent);color:#0d1117;border:none;border-radius:5px;cursor:pointer">Add Policy</button>
+    </div>
+    <div id="rp-error" style="color:var(--red,#f85149);font-size:0.8rem;min-height:1em"></div>
+    <div class="log-table-wrap" style="margin-top:0.4rem">
+      <table id="rp-table" style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr>
+            <th>Name</th><th>Pattern</th><th>Max Age</th><th>Max Points</th><th>Type</th><th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="rp-tbody">
+          <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1rem">Loading…</td></tr>
         </tbody>
       </table>
     </div>
@@ -3540,6 +3589,160 @@ function exportData(type, format) {
   a.click();
   document.body.removeChild(a);
 }
+
+// ── Admin 面板 ─────────────────────────────────────────────────────────────────
+async function fetchAdminStatus() {
+  try {
+    const res = await fetch(INGEST_BASE + '/api/v1/admin/status');
+    if (!res.ok) return;
+    const data = await res.json();
+    renderAdminCards(data);
+  } catch(e) { console.warn('admin status error:', e); }
+}
+
+function renderAdminCards(data) {
+  const cards = [
+    {label: 'Uptime',      value: formatUptime(data.uptime_seconds)},
+    {label: 'Version',     value: data.version},
+    {label: 'Go',          value: data.go_version},
+    {label: 'Goroutines',  value: data.goroutines},
+    {label: 'Heap',        value: data.heap_alloc_mb.toFixed(1) + ' MB'},
+    {label: 'Series',      value: data.tsdb_series_count},
+    {label: 'Data Points', value: data.tsdb_total_points.toLocaleString()},
+  ];
+  document.getElementById('admin-status-cards').innerHTML = cards.map(c =>
+    `<div style="flex:1;min-width:130px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:0.75rem 1rem">
+      <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.25rem">${c.label}</div>
+      <div style="font-size:1.05rem;font-weight:600">${escapeHtml(String(c.value))}</div>
+    </div>`
+  ).join('');
+}
+
+function formatUptime(secs) {
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m ${Math.floor(secs % 60)}s`;
+}
+
+async function adminAction(path, label) {
+  const el = document.getElementById('admin-action-msg');
+  el.style.color = 'var(--muted)';
+  el.textContent = label + '…';
+  try {
+    const res = await fetch(INGEST_BASE + path, {method: 'POST'});
+    const data = await res.json();
+    el.style.color = '#3fb950';
+    el.textContent = '✓ ' + (data.message || data.status);
+    fetchAdminStatus();
+  } catch(e) {
+    el.style.color = 'var(--red,#f85149)';
+    el.textContent = 'Error: ' + e.message;
+  }
+}
+
+document.getElementById('admin-refresh-btn').addEventListener('click', fetchAdminStatus);
+document.getElementById('admin-gc-btn').addEventListener('click', () => adminAction('/api/v1/admin/gc', 'Running GC'));
+document.getElementById('admin-snap-btn').addEventListener('click', () => adminAction('/api/v1/admin/snapshot', 'Snapshotting'));
+document.getElementById('admin-reload-btn').addEventListener('click', () => adminAction('/api/v1/admin/reload', 'Reloading config'));
+
+// 保留策略管理
+async function fetchRetentionPolicies() {
+  try {
+    const res = await fetch(INGEST_BASE + '/api/v1/retention');
+    if (!res.ok) return;
+    const policies = await res.json();
+    renderRetentionTable(policies);
+  } catch(e) { console.warn('retention fetch error:', e); }
+}
+
+function renderRetentionTable(policies) {
+  const tbody = document.getElementById('rp-tbody');
+  if (!policies || policies.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:1rem">No policies</td></tr>';
+    return;
+  }
+  tbody.innerHTML = policies.map(p => {
+    const age = p.max_age_seconds > 0 ? formatAge(p.max_age_seconds) : '∞';
+    const pts = p.max_points_per_series > 0 ? p.max_points_per_series.toLocaleString() : '∞';
+    const action = p.builtin
+      ? `<span style="font-size:0.7rem;padding:1px 6px;border-radius:4px;background:#3fb95022;color:#3fb950">built-in</span>`
+      : `<button onclick="deleteRetentionPolicy('${escapeHtml(p.name)}')" style="font-size:0.75rem;padding:2px 8px;background:#f8514922;color:#f85149;border:1px solid #f8514944;border-radius:4px;cursor:pointer">Delete</button>`;
+    return `<tr>
+      <td style="font-weight:600">${escapeHtml(p.name)}</td>
+      <td><code style="font-size:0.8rem">${escapeHtml(p.match_pattern)}</code></td>
+      <td>${age}</td><td>${pts}</td>
+      <td>${p.builtin ? 'built-in' : 'custom'}</td>
+      <td>${action}</td>
+    </tr>`;
+  }).join('');
+}
+
+function formatAge(secs) {
+  if (secs >= 86400) return (secs / 86400).toFixed(0) + 'd';
+  if (secs >= 3600)  return (secs / 3600).toFixed(0) + 'h';
+  return (secs / 60).toFixed(0) + 'm';
+}
+
+async function deleteRetentionPolicy(name) {
+  const errEl = document.getElementById('rp-error');
+  try {
+    const res = await fetch(`${INGEST_BASE}/api/v1/retention/${encodeURIComponent(name)}`, {method: 'DELETE'});
+    if (!res.ok) {
+      const d = await res.json();
+      errEl.textContent = d.error || 'Delete failed';
+      return;
+    }
+    errEl.textContent = '';
+    fetchRetentionPolicies();
+  } catch(e) { errEl.textContent = 'Error: ' + e.message; }
+}
+
+document.getElementById('rp-add-btn').addEventListener('click', async () => {
+  const errEl = document.getElementById('rp-error');
+  const body = {
+    name:                  document.getElementById('rp-name').value.trim(),
+    match_pattern:         document.getElementById('rp-pattern').value.trim(),
+    max_age_seconds:       parseInt(document.getElementById('rp-age').value) || 0,
+    max_points_per_series: parseInt(document.getElementById('rp-points').value) || 0,
+  };
+  if (!body.name || !body.match_pattern) {
+    errEl.textContent = 'Name and match_pattern are required';
+    return;
+  }
+  try {
+    const res = await fetch(INGEST_BASE + '/api/v1/retention', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      errEl.textContent = d.error || 'Create failed';
+      return;
+    }
+    errEl.textContent = '';
+    ['rp-name','rp-pattern','rp-age','rp-points'].forEach(id => document.getElementById(id).value = '');
+    fetchRetentionPolicies();
+  } catch(e) { errEl.textContent = 'Error: ' + e.message; }
+});
+
+// Admin tab 切换时加载数据
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  if (btn.dataset.tab === 'admin') btn.addEventListener('click', () => {
+    fetchAdminStatus();
+    fetchRetentionPolicies();
+  });
+});
+// 每 30 秒自动刷新（仅 Admin tab 可见时）
+setInterval(() => {
+  const adminTab = document.getElementById('tab-admin');
+  if (adminTab && adminTab.classList.contains('active')) {
+    fetchAdminStatus();
+  }
+}, 30000);
 </script>
 
 <!-- ── Add Rule modal ───────────────────────────────────────────────────────── -->

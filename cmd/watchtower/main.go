@@ -12,6 +12,7 @@ import (
 
 	"github.com/apaqa/watchtower/internal/agent"
 	"github.com/apaqa/watchtower/internal/alert"
+	"github.com/apaqa/watchtower/internal/admin"
 	"github.com/apaqa/watchtower/internal/anomaly"
 	"github.com/apaqa/watchtower/internal/auth"
 	"github.com/apaqa/watchtower/internal/config"
@@ -128,6 +129,28 @@ func main() {
 	correlator := correlation.New(db)
 	forecaster := forecast.New(db)
 
+	// 初始化降采样器和保留策略引擎
+	downsampler := tsdb.NewDownsampler(db)
+	downsampler.Start()
+	defer downsampler.Stop()
+	retentionEngine := tsdb.NewRetentionEngine(db)
+	// 从配置文件加载自定义保留策略
+	for _, rpc := range cfg.RetentionPolicies {
+		if err := retentionEngine.AddPolicy(tsdb.RetentionPolicy{
+			Name:         rpc.Name,
+			MatchPattern: rpc.MatchPattern,
+			MaxAgeSecs:   rpc.MaxAgeSecs,
+			MaxPoints:    rpc.MaxPoints,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to load retention policy %q: %v\n", rpc.Name, err)
+		}
+	}
+	retentionEngine.Start()
+	defer retentionEngine.Stop()
+
+	// 初始化 Admin Handler
+	adminHandler := admin.New(db, cfg, retentionEngine, "watchtower.yaml")
+
 	// ── 4b. Initialize API key store and pre-load keys from config ───────────
 	keyStore := auth.NewKeyStore()
 	for _, ak := range cfg.APIKeys {
@@ -196,6 +219,8 @@ func main() {
 	ingestSrv.RegisterAnomalyDetector(anomalyDetector)
 	ingestSrv.RegisterCorrelator(correlator)
 	ingestSrv.RegisterForecaster(forecaster)
+	ingestSrv.RegisterRetentionEngine(retentionEngine)
+	ingestSrv.RegisterAdminHandler(adminHandler)
 	ingestSrv.RegisterKeyStore(keyStore)
 	go func() {
 		if err := ingestSrv.Start(); err != nil {
@@ -269,6 +294,8 @@ func main() {
 	fmt.Printf("Correl:  %s/api/v1/correlate?a=cpu_usage_percent&b=memory_usage_percent&window=30m\n", base)
 	fmt.Printf("Forecast:%s/api/v1/forecast?metric=cpu_usage_percent\n", base)
 	fmt.Printf("Capacity:%s/api/v1/capacity\n", base)
+	fmt.Printf("Retain:  %s/api/v1/retention\n", base)
+	fmt.Printf("Admin:   %s/api/v1/admin/status\n", base)
 	fmt.Printf("Scrape:  %s/metrics  (Prometheus scrape endpoint)\n", base)
 	fmt.Printf("Prom:    %s/api/v1/metrics/prometheus  (Prometheus push)\n", base)
 	fmt.Printf("Panels:  http://localhost:%d/api/v1/dashboard/panels\n", cfg.Server.DashboardPort)

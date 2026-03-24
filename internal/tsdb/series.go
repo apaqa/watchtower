@@ -92,6 +92,19 @@ func (s *Series) Len() int {
 	return len(s.points)
 }
 
+// TrimToLength 保留最新的 maxPoints 个数据点，删除更早的数据
+// 用于保留策略中按点数限制序列大小
+func (s *Series) TrimToLength(maxPoints int) {
+	if maxPoints <= 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.points) > maxPoints {
+		s.points = append([]model.DataPoint(nil), s.points[len(s.points)-maxPoints:]...)
+	}
+}
+
 // retentionDuration 是数据点在内存中保留的最大时长
 const retentionDuration = time.Hour
 

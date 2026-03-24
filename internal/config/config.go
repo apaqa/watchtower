@@ -10,13 +10,14 @@ import (
 
 // Config 是顶级配置结构，对应 watchtower.yaml 文件
 type Config struct {
-	Server        ServerConfig        `yaml:"server"`
-	Agent         AgentConfig         `yaml:"agent"`
-	Retention     RetentionConfig     `yaml:"retention"`
-	Endpoints     []EndpointConfig    `yaml:"endpoints"`
-	Alerts        []AlertConfig       `yaml:"alerts"`
-	APIKeys       []APIKeyConfig      `yaml:"api_keys"`
-	Notifications NotificationsConfig `yaml:"notifications"`
+	Server           ServerConfig      `yaml:"server"`
+	Agent            AgentConfig       `yaml:"agent"`
+	Retention        RetentionConfig   `yaml:"retention"`
+	RetentionPolicies []RetentionPolicyConfig `yaml:"retention_policies"`
+	Endpoints        []EndpointConfig  `yaml:"endpoints"`
+	Alerts           []AlertConfig     `yaml:"alerts"`
+	APIKeys          []APIKeyConfig    `yaml:"api_keys"`
+	Notifications    NotificationsConfig `yaml:"notifications"`
 }
 
 // ServerConfig 控制 HTTP 服务监听端口
@@ -73,6 +74,14 @@ type ChannelConfig struct {
 	To           []string `yaml:"to"`
 	SMTPUsername string   `yaml:"smtp_username"`
 	SMTPPassword string   `yaml:"smtp_password"`
+}
+
+// RetentionPolicyConfig 描述一条自定义数据保留策略
+type RetentionPolicyConfig struct {
+	Name         string `yaml:"name"`           // 策略唯一名称
+	MatchPattern string `yaml:"match_pattern"`  // 正则表达式，匹配指标名称
+	MaxAgeSecs   int64  `yaml:"max_age_seconds"` // 最大保留秒数；0 = 不限制
+	MaxPoints    int    `yaml:"max_points_per_series"` // 最大数据点数；0 = 不限制
 }
 
 // AlertConfig 描述一条预定义告警规则

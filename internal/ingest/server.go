@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/apaqa/watchtower/internal/alert"
+	"github.com/apaqa/watchtower/internal/admin"
 	"github.com/apaqa/watchtower/internal/anomaly"
 	"github.com/apaqa/watchtower/internal/auth"
 	"github.com/apaqa/watchtower/internal/correlation"
@@ -154,6 +155,16 @@ func (s *Server) RegisterCorrelator(c *correlation.Correlator) {
 // RegisterForecaster 注册资源预测和容量规划 API 路由（必须在 Start 之前调用）
 func (s *Server) RegisterForecaster(f *forecast.Forecaster) {
 	forecast.RegisterRoutes(s.mux, f)
+}
+
+// RegisterAdminHandler 注册 Admin API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterAdminHandler(h *admin.Handler) {
+	admin.RegisterRoutes(s.mux, h)
+}
+
+// RegisterRetentionEngine 注册保留策略 CRUD API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterRetentionEngine(re *tsdb.RetentionEngine) {
+	tsdb.RegisterRetentionRoutes(s.mux, re)
 }
 
 // RegisterLogStore 注入日志存储并注册日志 API 路由（必须在 Start 之前调用）

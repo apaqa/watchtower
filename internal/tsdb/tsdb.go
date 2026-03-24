@@ -3,6 +3,7 @@ package tsdb
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -173,7 +174,8 @@ func (db *TSDB) cleanupLoop() {
 	}
 }
 
-// cleanup 删除所有序列中超过保留期限（1小时）的数据点
+// cleanup 删除原始序列中超过保留期限（1小时）的数据点
+// 注意：带 :1m / :5m 后缀的降采样序列由 RetentionEngine 单独管理，此处跳过
 func (db *TSDB) cleanup() {
 	cutoff := cutoffTime()
 
@@ -185,8 +187,51 @@ func (db *TSDB) cleanup() {
 	db.mu.RUnlock()
 
 	for _, s := range series {
+		// 跳过降采样序列，由 RetentionEngine 管理更长的保留期
+		if strings.HasSuffix(s.Name, ":1m") || strings.HasSuffix(s.Name, ":5m") {
+			continue
+		}
 		s.Cleanup(cutoff)
 	}
+}
+
+// GC 立即执行一次数据清理（供管理员 API 强制触发）
+func (db *TSDB) GC() {
+	db.cleanup()
+}
+
+// TotalPoints 返回所有序列的数据点总数（用于监控和 Admin API）
+func (db *TSDB) TotalPoints() int {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	total := 0
+	for _, s := range db.series {
+		total += s.Len()
+	}
+	return total
+}
+
+// DeleteSeries 删除所有与指定名称匹配的序列；返回删除数量（供管理员清理使用）
+func (db *TSDB) DeleteSeries(name string) int {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	count := 0
+	for fp, s := range db.series {
+		if s.Name == name {
+			delete(db.series, fp)
+			count++
+		}
+	}
+	return count
+}
+
+// Snapshot 将当前数据立即刷盘（若已启用持久化存储）；纯内存模式返回 false
+func (db *TSDB) Snapshot() bool {
+	if db.storage == nil {
+		return false
+	}
+	db.storage.Flush()
+	return true
 }
 
 // SeriesCount 返回当前序列总数（用于测试和监控）
