@@ -181,6 +181,15 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - `GET /api/v1/capacity` — returns full CapacityReport for all system metrics
 - Dashboard **Forecasting & Capacity** section in Metrics tab: capacity summary cards (CPU/Memory/Disk) with trend arrow (↑↓→) and health badge; interactive forecast widget with dashed prediction line chart
 
+### Metric Comparison & Change Detection
+- **CompareResult**: `metric`, `current_avg`, `previous_avg`, `change_percent`, `direction` (`up` / `down` / `stable`)
+- `GET /api/v1/compare?metric=<name>&current=<window>&previous=<window>` compares the latest window against the immediately preceding window
+- `GET /api/v1/compare/report` returns a report for all known metrics; defaults to `current=1h` and `previous=1h`
+- **CUSUM-based change detection** scans recent metric behavior every 2 minutes and stores detected shifts as `ChangePoint`
+- **ChangePoint**: `metric`, `timestamp`, `before_mean`, `after_mean`, `significance_score`
+- `GET /api/v1/changes` lists all detected change points; `?metric=<name>` filters by metric name
+- Dashboard **Changes** section in the Metrics tab highlights the newest detected shifts with before/after averages and significance score
+
 ### Incident Management
 
 - Create, update, and resolve **incidents** with severity (critical/major/minor) and status (investigating/identified/monitoring/resolved)
@@ -450,6 +459,7 @@ go build -o watchtower ./cmd/watchtower
 | Prometheus Ingest | http://localhost:9090/api/v1/metrics/prometheus |
 | Prometheus Scrape | http://localhost:9090/metrics |
 | Custom Panels API | http://localhost:8080/api/v1/dashboard/panels |
+| Dashboard Templates API | http://localhost:8080/api/v1/dashboard/templates |
 | Pipeline API | http://localhost:9090/api/v1/pipeline/rules |
 | Export API | http://localhost:9090/api/v1/export/metrics |
 | Process API | http://localhost:9090/api/v1/processes |
@@ -457,6 +467,11 @@ go build -o watchtower ./cmd/watchtower
 | Status Badge | http://localhost:9090/status/badge |
 | Anomaly API | http://localhost:9090/api/v1/anomalies |
 | Correlation API | http://localhost:9090/api/v1/correlate |
+| Compare API | http://localhost:9090/api/v1/compare |
+| Change Detection API | http://localhost:9090/api/v1/changes |
+| Replay API | http://localhost:9090/api/v1/replay/recordings |
+| Tag API | http://localhost:9090/api/v1/tags |
+| Saved Query API | http://localhost:9090/api/v1/queries |
 
 ## Configuration
 
@@ -883,6 +898,58 @@ Panel schema:
 
 `panel_type` is `"stat"` (large number) or `"gauge"` (percentage). `refresh_interval` minimum is 5 seconds.
 
+### Dashboard Templates
+
+WatchTower includes a small built-in template gallery in the Metrics tab. Clicking the `Templates` button creates ready-made custom panels for common scenarios.
+
+Built-in templates:
+
+- `System Overview` - CPU / RAM / Disk / Network
+- `Application Monitoring` - request rate / error rate / latency
+- `Infrastructure` - probes / process health / disk forecast
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/api/v1/dashboard/templates` | List all built-in templates |
+| `POST` | `/api/v1/dashboard/templates/apply/{name}` | Apply a template and create its panels |
+
+```bash
+# List available templates
+curl http://localhost:8080/api/v1/dashboard/templates
+
+# Apply the "System Overview" template
+curl -X POST http://localhost:8080/api/v1/dashboard/templates/apply/System%20Overview
+```
+
+### Data Replay
+
+Metric traffic can be recorded to disk and replayed later. This is useful for demos, regression testing, and validating alert rules against historical traffic.
+
+- Recording files are stored under `watchtower-data/recordings/*.rec`
+- Replay writes the recorded metric stream back into the TSDB
+- `speed` accepts multipliers such as `1x`, `2x`, `4x`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/replay/record/start` | Start recording all metric writes |
+| `POST` | `/api/v1/replay/record/stop` | Stop the active recording |
+| `POST` | `/api/v1/replay/play?file=<name>&speed=2x` | Replay a recording into the TSDB |
+| `GET`  | `/api/v1/replay/recordings` | List available recording files |
+
+```bash
+# Start recording all incoming metrics
+curl -X POST http://localhost:9090/api/v1/replay/record/start
+
+# Stop the recording
+curl -X POST http://localhost:9090/api/v1/replay/record/stop
+
+# List files
+curl http://localhost:9090/api/v1/replay/recordings
+
+# Replay one file at 2x speed
+curl -X POST "http://localhost:9090/api/v1/replay/play?file=20260324-120000.rec&speed=2x"
+```
+
 ### Notification History
 
 | Method | Path | Description |
@@ -1036,6 +1103,26 @@ curl "http://localhost:9090/api/v1/correlate/auto?metric=cpu_usage_percent&windo
 ```
 
 Valid `window` values: `5m` `15m` `30m` `1h` `6h` `1d`
+
+### Metric Comparison & Change Detection
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/compare?metric=<name>&current=<w>&previous=<w>` | Compare average metric values across two adjacent windows |
+| `GET` | `/api/v1/compare/report?current=<w>&previous=<w>` | Generate a comparison report for all known metrics |
+| `GET` | `/api/v1/changes` | List detected metric change points (newest first) |
+| `GET` | `/api/v1/changes?metric=<name>` | Filter detected change points by metric name |
+
+```bash
+# Compare the last hour of CPU usage against the previous hour
+curl "http://localhost:9090/api/v1/compare?metric=cpu_usage_percent&current=1h&previous=1h"
+
+# Generate a report for all metrics
+curl "http://localhost:9090/api/v1/compare/report?current=1h&previous=1h"
+
+# List detected change points
+curl "http://localhost:9090/api/v1/changes"
+```
 
 ### Resource Forecasting & Capacity
 
@@ -1374,6 +1461,61 @@ curl http://localhost:9090/api/v1/processes
 curl "http://localhost:9090/api/v1/processes?sort=memory"
 ```
 
+### Metric Tags
+
+WatchTower now supports reusable color tags for metrics, alerts, and probes.
+
+- Dashboard metric cards, active alerts, and probe cards render colored tag badges
+- Search can work by tag value such as `production`, or by `key:value`
+- The dashboard reads resource tags through the same search API used by automation/scripts
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/tags` | Create a tag with `key`, `value`, and hex `color` |
+| `GET` | `/api/v1/tags` | List all tags |
+| `POST` | `/api/v1/tags/attach` | Attach a tag to a metric, alert, or probe |
+| `GET` | `/api/v1/tags/search?tag=production` | Find all tagged resources matching the tag |
+| `GET` | `/api/v1/tags/search?resource_type=metric&resource_id=cpu_usage_percent` | List tags on a specific resource |
+
+```bash
+# Create a production tag
+curl -X POST http://localhost:9090/api/v1/tags \
+  -H 'Content-Type: application/json' \
+  -d '{"key":"env","value":"production","color":"#22c55e"}'
+
+# Attach the tag to a metric
+curl -X POST http://localhost:9090/api/v1/tags/attach \
+  -H 'Content-Type: application/json' \
+  -d '{"tag_id":"tag-1","resource_type":"metric","resource_id":"cpu_usage_percent"}'
+
+# Search resources by tag
+curl "http://localhost:9090/api/v1/tags/search?tag=production"
+```
+
+### Saved Queries
+
+Saved WQL queries can be stored server-side and loaded from the Metrics tab sidebar. Favorite queries are pinned to the top in both the API result order and the dashboard.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/queries` | Save a WQL query |
+| `GET` | `/api/v1/queries` | List saved queries, favorites first |
+| `DELETE` | `/api/v1/queries/{id}` | Delete a saved query |
+| `PUT` | `/api/v1/queries/{id}/favorite` | Toggle favorite status |
+
+```bash
+# Save a query
+curl -X POST http://localhost:9090/api/v1/queries \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"CPU Avg","wql_expression":"avg(cpu_usage_percent[5m])","description":"Dashboard default","created_by":"ops"}'
+
+# List queries
+curl http://localhost:9090/api/v1/queries
+
+# Toggle favorite
+curl -X PUT http://localhost:9090/api/v1/queries/query-1/favorite
+```
+
 ### Status Page
 
 | Method | Path | Description |
@@ -1568,6 +1710,45 @@ go test ./internal/alert/...         # alert engine
 go test ./internal/wql/...           # WQL language
 go test ./internal/tsdb/...          # TSDB + persistence
 ```
+
+## CLI
+
+Build the standalone CLI:
+
+```bash
+go build ./cmd/watchtower-cli
+```
+
+Common commands:
+
+```bash
+watchtower-cli status
+watchtower-cli metrics list
+watchtower-cli query "avg(cpu_usage_percent[5m])"
+watchtower-cli alerts list
+watchtower-cli alerts create --name high_cpu --expr "avg(cpu_usage_percent[5m])" --threshold 80 --severity warning
+watchtower-cli logs search --query "error" --level error --limit 20
+watchtower-cli config validate watchtower.yaml
+```
+
+Global flags:
+
+- `--server` sets the WatchTower server address; default is `http://localhost:9090`
+- `--api-key` sends `X-API-Key` on API requests
+- `--format table|json` controls output format; default is `table`
+
+## Configuration Validation
+
+`watchtower-cli config validate watchtower.yaml` and the main server startup both use the same validator in `internal/config/validate.go`.
+
+Validation checks include:
+
+- server and SMTP ports must be in the valid range
+- polling intervals and timeouts must be greater than zero
+- endpoint URLs and webhook URLs must be valid
+- endpoints and other structured sections must include required fields
+
+The validator returns both warnings and errors. Warnings are shown but do not block startup; errors fail CLI validation and server startup.
 
 ## Tech Stack
 

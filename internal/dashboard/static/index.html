@@ -149,6 +149,30 @@
     .ram    .panel-value { color: var(--green); }
     .disk   .panel-value { color: var(--yellow); }
     .custom .panel-value { color: var(--purple); }
+    .resource-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+      min-height: 24px;
+    }
+    .tag-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .tag-chip-empty {
+      color: var(--muted);
+      border-color: var(--border);
+      background: rgba(139,148,158,0.08);
+    }
 
     /* ── Alert panel ── */
     .alert-panel {
@@ -299,6 +323,15 @@
       color: var(--muted);
       margin-bottom: 12px;
     }
+    .query-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      gap: 18px;
+      align-items: start;
+    }
+    .query-main {
+      min-width: 0;
+    }
     .query-row {
       display: flex;
       gap: 8px;
@@ -328,6 +361,17 @@
       transition: opacity 0.15s;
     }
     #wql-btn:hover { opacity: 0.85; }
+    #save-query-btn {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.88rem;
+    }
+    #save-query-btn:hover { border-color: var(--accent); color: var(--accent); }
     #wql-result {
       font-size: 0.88rem;
       min-height: 40px;
@@ -351,6 +395,103 @@
       font-size: 0.85rem;
     }
     #wql-result th { color: var(--muted); font-weight: 600; background: var(--bg); }
+    .saved-query-sidebar {
+      background: rgba(13,17,23,0.45);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      min-height: 180px;
+    }
+    .saved-query-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      font-size: 0.76rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    #saved-query-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .saved-query-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+    .saved-query-item:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+    .saved-query-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .saved-query-name {
+      font-weight: 700;
+      font-size: 0.88rem;
+      color: var(--text);
+    }
+    .saved-query-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .saved-query-action {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 2px 7px;
+      cursor: pointer;
+      font-size: 0.74rem;
+    }
+    .saved-query-action:hover {
+      color: var(--text);
+      border-color: var(--accent);
+    }
+    .saved-query-action.favorite.active {
+      color: var(--yellow);
+      border-color: rgba(210,153,34,0.5);
+      background: rgba(210,153,34,0.12);
+    }
+    .saved-query-description {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .saved-query-expression {
+      font-family: "Fira Code", "Consolas", monospace;
+      font-size: 0.76rem;
+      color: var(--accent);
+      word-break: break-word;
+    }
+    .saved-query-meta {
+      margin-top: 6px;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    #saved-query-empty {
+      color: var(--muted);
+      font-size: 0.82rem;
+      padding-top: 6px;
+    }
+    @media (max-width: 980px) {
+      .query-layout {
+        grid-template-columns: 1fr;
+      }
+    }
 
     /* ── Log panel ── */
     .log-panel {
@@ -809,7 +950,7 @@
       letter-spacing: 0.06em;
       color: var(--muted);
     }
-    #add-panel-btn {
+    #add-panel-btn, #templates-btn {
       background: var(--accent);
       color: #0d1117;
       border: none;
@@ -820,7 +961,12 @@
       font-size: 0.8rem;
       transition: opacity 0.15s;
     }
-    #add-panel-btn:hover { opacity: 0.85; }
+    #add-panel-btn:hover, #templates-btn:hover { opacity: 0.85; }
+    #templates-btn {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
     .custom-panel-card {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -852,6 +998,33 @@
 
     /* Add panel modal */
     #panel-modal .modal { width: min(480px, 95vw); }
+    #templates-modal .modal { width: min(760px, 95vw); }
+    .template-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .template-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .template-card-title { font-size: 0.95rem; font-weight: 700; }
+    .template-card-desc { font-size: 0.8rem; color: var(--muted); min-height: 42px; }
+    .template-card-meta { font-size: 0.76rem; color: var(--muted); }
+    .template-card button {
+      background: var(--accent);
+      color: #0d1117;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-weight: 700;
+      cursor: pointer;
+    }
 
     /* ── Service Map tab ── */
     #tab-servicemap { padding: 24px; }
@@ -1116,6 +1289,7 @@
   <!-- CPU panel -->
   <div class="panel cpu">
     <div class="panel-title">CPU Usage</div>
+    <div class="resource-tags" id="metric-tags-cpu_usage_percent"></div>
     <div class="panel-header">
       <div class="panel-value" id="val-cpu">—</div>
       <div class="panel-unit">%</div>
@@ -1126,6 +1300,7 @@
   <!-- Memory panel -->
   <div class="panel ram">
     <div class="panel-title">Memory Usage</div>
+    <div class="resource-tags" id="metric-tags-memory_usage_percent"></div>
     <div class="panel-header">
       <div class="panel-value" id="val-ram">—</div>
       <div class="panel-unit">%</div>
@@ -1136,6 +1311,7 @@
   <!-- Disk panel -->
   <div class="panel disk">
     <div class="panel-title">Disk Usage</div>
+    <div class="resource-tags" id="metric-tags-disk_usage_percent"></div>
     <div class="panel-header">
       <div class="panel-value" id="val-disk">—</div>
       <div class="panel-unit">%</div>
@@ -1146,6 +1322,7 @@
   <!-- Memory bytes panel -->
   <div class="panel custom">
     <div class="panel-title">Memory Used</div>
+    <div class="resource-tags" id="metric-tags-memory_used_bytes"></div>
     <div class="panel-header">
       <div class="panel-value" id="val-membytes">—</div>
       <div class="panel-unit" id="unit-membytes">GB</div>
@@ -1156,18 +1333,32 @@
   <!-- WQL query panel -->
   <div class="query-panel">
     <div class="panel-title">WQL Query</div>
-    <div class="query-row">
-      <input id="wql-input" type="text"
-        placeholder="avg(cpu_usage_percent[5m])"
-        value="avg(cpu_usage_percent[5m])" />
-      <button id="wql-btn">Run</button>
+    <div class="query-layout">
+      <div class="query-main">
+        <div class="query-row">
+          <input id="wql-input" type="text"
+            placeholder="avg(cpu_usage_percent[5m])"
+            value="avg(cpu_usage_percent[5m])" />
+          <button id="wql-btn">Run</button>
+          <button id="save-query-btn">Save</button>
+        </div>
+        <div id="wql-result"><span style="color:var(--muted)">Enter a WQL expression and click Run</span></div>
+      </div>
+      <aside class="saved-query-sidebar">
+        <div class="saved-query-header">
+          <span>Saved Queries</span>
+          <span id="saved-query-count"></span>
+        </div>
+        <div id="saved-query-list"></div>
+        <div id="saved-query-empty">No saved queries yet</div>
+      </aside>
     </div>
-    <div id="wql-result"><span style="color:var(--muted)">Enter a WQL expression and click Run</span></div>
   </div>
 
   <!-- Custom panels header -->
   <div class="custom-panels-header">
     <span class="custom-panels-label">Custom Panels</span>
+    <button id="templates-btn">Templates</button>
     <button id="add-panel-btn">+ Add Panel</button>
   </div>
 
@@ -1218,6 +1409,16 @@
     </div>
     <div id="fc-result" style="color:var(--muted);font-size:0.85rem">Select a metric and click Forecast.</div>
     <div style="margin-top:0.75rem;position:relative"><canvas id="fc-chart" style="max-height:220px"></canvas></div>
+  </div>
+
+  <div class="slo-section-header" style="margin-top:1.5rem">
+    <span class="slo-section-label">Changes</span>
+    <span id="changes-count" style="font-size:0.78rem;color:var(--muted)"></span>
+  </div>
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-top:0.4rem">
+    <div id="changes-list" style="display:flex;flex-direction:column;gap:0.6rem">
+      <div style="color:var(--muted);font-size:0.85rem">No detected shifts yet.</div>
+    </div>
   </div>
 
   <!-- Correlations section -->
@@ -1926,6 +2127,19 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="templates-modal">
+  <div class="modal">
+    <h2>Dashboard Templates</h2>
+    <div id="templates-gallery" class="template-grid">
+      <div style="color:var(--muted)">Loading templates...</div>
+    </div>
+    <div id="templates-modal-error" style="color:var(--red);font-size:0.82rem;display:none"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="templates-modal-cancel">Close</button>
+    </div>
+  </div>
+</div>
+
 <footer>WatchTower &copy; 2026 &mdash; Data refreshes every 5 seconds &mdash; Last 5 minutes shown</footer>
 
 <script>
@@ -2053,6 +2267,51 @@ function connect() {
 
 connect();
 
+const TAGS_API = 'http://localhost:9090/api/v1/tags';
+const SAVED_QUERY_API = 'http://localhost:9090/api/v1/queries';
+const tagCache = new Map();
+let savedQueries = [];
+
+function cacheKey(resourceType, resourceID) {
+  return `${resourceType}:${resourceID}`;
+}
+
+function tagStyle(color) {
+  return `background:${color}22;color:${color};border-color:${color}66`;
+}
+
+function renderTagBadges(tags) {
+  if (!Array.isArray(tags) || tags.length === 0) {
+    return '<span class="tag-chip tag-chip-empty">No tags</span>';
+  }
+  return tags.map(tag => `<span class="tag-chip" style="${tagStyle(tag.color)}">${escapeHtml(tag.key)}:${escapeHtml(tag.value)}</span>`).join('');
+}
+
+async function loadTagsForResource(resourceType, resourceID, force = false) {
+  const key = cacheKey(resourceType, resourceID);
+  if (!force && tagCache.has(key)) return tagCache.get(key);
+
+  try {
+    const resp = await apiFetch(`${TAGS_API}/search?resource_type=${encodeURIComponent(resourceType)}&resource_id=${encodeURIComponent(resourceID)}`);
+    const data = await resp.json();
+    const tags = Array.isArray(data.tags) ? data.tags : [];
+    tagCache.set(key, tags);
+    return tags;
+  } catch (e) {
+    return [];
+  }
+}
+
+async function refreshMetricTags() {
+  const metricIDs = ['cpu_usage_percent', 'memory_usage_percent', 'disk_usage_percent', 'memory_used_bytes'];
+  for (const metricID of metricIDs) {
+    const container = document.getElementById(`metric-tags-${metricID}`);
+    if (!container) continue;
+    const tags = await loadTagsForResource('metric', metricID, true);
+    container.innerHTML = renderTagBadges(tags);
+  }
+}
+
 // ── Handle incoming WebSocket messages ───────────────────────────────────────
 function handleMessage(data) {
   const now = new Date().toLocaleTimeString('en-US', { hour12: false });
@@ -2088,7 +2347,7 @@ function handleMessage(data) {
 // ── Alert panel logic ─────────────────────────────────────────────────────────
 const ALERTS_API = 'http://localhost:9090/api/v1/alerts';
 
-function renderAlerts(alerts) {
+async function renderAlerts(alerts) {
   const list = document.getElementById('active-alerts-list');
   const countBadge = document.getElementById('active-count');
   const firing = (alerts || []).filter(a => a.state === 'firing' || a.state === 'pending');
@@ -2096,16 +2355,17 @@ function renderAlerts(alerts) {
   if (firing.length === 0) {
     list.innerHTML = '<span class="no-alerts">No active alerts</span>';
     countBadge.style.display = 'none';
-  } else {
+    return;
+  }
     countBadge.textContent = firing.length;
     countBadge.style.display = 'inline';
-    list.innerHTML = firing.map(a => {
+    const tagsByAlert = await Promise.all(firing.map(a => loadTagsForResource('alert', a.name, true)));
+    list.innerHTML = firing.map((a, index) => {
       const cls = a.state === 'pending' ? 'badge-pending' : `badge-${a.severity}`;
-      return `<span class="badge ${cls}" style="margin:0 4px 4px 0">
+      return `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"><span class="badge ${cls}" style="width:max-content">
         ${escapeHtml(a.name)} — ${escapeHtml(a.severity.toUpperCase())} — ${(+a.value).toFixed(2)}
-      </span>`;
+      </span><div class="resource-tags" style="margin-top:0">${renderTagBadges(tagsByAlert[index])}</div></div>`;
     }).join('');
-  }
 }
 
 async function fetchAlertHistory() {
@@ -2276,6 +2536,7 @@ document.getElementById('log-level-filter').addEventListener('change', renderLog
 // ── WQL query ─────────────────────────────────────────────────────────────────
 const wqlInput  = document.getElementById('wql-input');
 const wqlBtn    = document.getElementById('wql-btn');
+const saveQueryBtn = document.getElementById('save-query-btn');
 const wqlResult = document.getElementById('wql-result');
 const QUERY_URL = 'http://localhost:9090/api/v1/query';
 
@@ -2325,6 +2586,110 @@ function renderResult(data) {
 
 wqlBtn.addEventListener('click', runQuery);
 wqlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') runQuery(); });
+
+async function fetchSavedQueries() {
+  try {
+    const resp = await apiFetch(SAVED_QUERY_API);
+    savedQueries = await resp.json();
+    renderSavedQueries(savedQueries || []);
+  } catch (e) {
+    renderSavedQueries([]);
+  }
+}
+
+function renderSavedQueries(list) {
+  const container = document.getElementById('saved-query-list');
+  const empty = document.getElementById('saved-query-empty');
+  const count = document.getElementById('saved-query-count');
+  const sorted = [...(list || [])].sort((a, b) => {
+    if (!!a.is_favorite !== !!b.is_favorite) return a.is_favorite ? -1 : 1;
+    return (b.created_at || 0) - (a.created_at || 0);
+  });
+
+  if (count) count.textContent = sorted.length ? `${sorted.length} total` : '';
+  if (!sorted.length) {
+    container.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+
+  empty.style.display = 'none';
+  container.innerHTML = sorted.map(query => `
+    <div class="saved-query-item" data-query-id="${escapeHtml(query.id)}">
+      <div class="saved-query-top">
+        <div class="saved-query-name">${escapeHtml(query.name)}</div>
+        <div class="saved-query-actions">
+          <button class="saved-query-action favorite ${query.is_favorite ? 'active' : ''}" data-action="favorite" data-query-id="${escapeHtml(query.id)}">★</button>
+          <button class="saved-query-action" data-action="delete" data-query-id="${escapeHtml(query.id)}">Delete</button>
+        </div>
+      </div>
+      <div class="saved-query-description">${escapeHtml(query.description || 'No description')}</div>
+      <div class="saved-query-expression">${escapeHtml(query.wql_expression)}</div>
+      <div class="saved-query-meta">By ${escapeHtml(query.created_by || 'unknown')}</div>
+    </div>
+  `).join('');
+}
+
+async function saveCurrentQuery() {
+  const wql = wqlInput.value.trim();
+  if (!wql) {
+    alert('Please enter a WQL query first.');
+    return;
+  }
+  const name = prompt('Saved query name:', 'My query');
+  if (!name) return;
+  const description = prompt('Description (optional):', '') || '';
+  try {
+    await apiFetch(SAVED_QUERY_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        wql_expression: wql,
+        description,
+        created_by: 'dashboard',
+      }),
+    });
+    fetchSavedQueries();
+  } catch (e) {
+    alert('Failed to save query');
+  }
+}
+
+async function toggleFavoriteQuery(id) {
+  try {
+    await apiFetch(`${SAVED_QUERY_API}/${encodeURIComponent(id)}/favorite`, { method: 'PUT' });
+    fetchSavedQueries();
+  } catch (e) {}
+}
+
+async function deleteSavedQuery(id) {
+  try {
+    await apiFetch(`${SAVED_QUERY_API}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    fetchSavedQueries();
+  } catch (e) {}
+}
+
+if (saveQueryBtn) saveQueryBtn.addEventListener('click', saveCurrentQuery);
+document.getElementById('saved-query-list').addEventListener('click', (event) => {
+  const action = event.target?.dataset?.action;
+  const id = event.target?.dataset?.queryId;
+  if (action === 'favorite' && id) {
+    event.stopPropagation();
+    toggleFavoriteQuery(id);
+    return;
+  }
+  if (action === 'delete' && id) {
+    event.stopPropagation();
+    deleteSavedQuery(id);
+    return;
+  }
+  const card = event.target.closest('.saved-query-item');
+  if (!card) return;
+  const query = savedQueries.find(item => item.id === card.dataset.queryId);
+  if (!query) return;
+  wqlInput.value = query.wql_expression || '';
+});
 
 // ── Endpoint monitoring logic ─────────────────────────────────────────────────
 const PROBES_API = 'http://localhost:9090/api/v1/probes';
@@ -2399,6 +2764,7 @@ function probeCardTemplate(name, url, method) {
       <div class="probe-info-col">
         <div class="probe-name">${escapeHtml(name)}</div>
         <div class="probe-url">${escapeHtml(method || 'GET')} ${escapeHtml(url)}</div>
+        <div class="resource-tags" id="ptags-${safeId}">${renderTagBadges([])}</div>
       </div>
       <div class="probe-metrics-col">
         <span class="probe-status-badge probe-unknown" id="pbadge-${safeId}">?</span>
@@ -2419,6 +2785,7 @@ function updateProbeCardData(probe) {
   const rtEl    = document.getElementById('prt-'      + id);
   const uptimeEl= document.getElementById('puptime-'  + id);
   const dotsEl  = document.getElementById('pdots-'    + id);
+  const tagsEl  = document.getElementById('ptags-'    + id);
 
   // Status badge
   if (badge) {
@@ -2442,6 +2809,11 @@ function updateProbeCardData(probe) {
       `<span class="probe-dot ${r.status === 'up' ? 'dot-up' : 'dot-down'}"
              title="${r.status} ${r.response_ms}ms"></span>`
     ).join('');
+  }
+  if (tagsEl) {
+    loadTagsForResource('probe', probe.name, true).then(tags => {
+      tagsEl.innerHTML = renderTagBadges(tags);
+    });
   }
   // Response time sparkline
   updateSparkline(probe);
@@ -2554,6 +2926,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 // Initial load + refresh every 30 seconds
+refreshMetricTags();
+setInterval(refreshMetricTags, 60000);
+fetchSavedQueries();
 fetchProbes();
 setInterval(fetchProbes, 30000);
 fetchSyntheticTests();
@@ -2814,6 +3189,7 @@ setInterval(fetchAgents, 15000);
 
 // ── Custom Panels ──────────────────────────────────────────────────────────────
 const PANELS_API = 'http://localhost:8080/api/v1/dashboard/panels';
+const TEMPLATES_API = 'http://localhost:8080/api/v1/dashboard/templates';
 
 // Stores active panel refresh timers keyed by panel id
 const panelTimers = {};
@@ -2931,6 +3307,67 @@ document.getElementById('panel-modal-submit').addEventListener('click', async ()
 
 fetchCustomPanels();
 setInterval(fetchCustomPanels, 60000);
+
+const templatesModal = document.getElementById('templates-modal');
+document.getElementById('templates-btn').addEventListener('click', async () => {
+  templatesModal.classList.add('open');
+  await fetchTemplates();
+});
+document.getElementById('templates-modal-cancel').addEventListener('click', () => {
+  templatesModal.classList.remove('open');
+});
+templatesModal.addEventListener('click', e => {
+  if (e.target === templatesModal) templatesModal.classList.remove('open');
+});
+
+async function fetchTemplates() {
+  const gallery = document.getElementById('templates-gallery');
+  const errEl = document.getElementById('templates-modal-error');
+  errEl.style.display = 'none';
+  gallery.innerHTML = '<div style="color:var(--muted)">Loading templates...</div>';
+  try {
+    const resp = await apiFetch(TEMPLATES_API);
+    const templates = await resp.json();
+    if (!templates || templates.length === 0) {
+      gallery.innerHTML = '<div style="color:var(--muted)">No templates available.</div>';
+      return;
+    }
+    gallery.innerHTML = templates.map(t => `
+      <div class="template-card">
+        <div class="template-card-title">${escapeHtml(t.name)}</div>
+        <div class="template-card-desc">${escapeHtml(t.description || '')}</div>
+        <div class="template-card-meta">${(t.panels || []).length} panels</div>
+        <button data-template-name="${escapeHtml(t.name)}">Apply Template</button>
+      </div>
+    `).join('');
+    gallery.querySelectorAll('button[data-template-name]').forEach(btn => {
+      btn.addEventListener('click', () => applyTemplate(btn.dataset.templateName));
+    });
+  } catch (e) {
+    gallery.innerHTML = '';
+    errEl.textContent = 'Failed to load templates: ' + String(e);
+    errEl.style.display = 'block';
+  }
+}
+
+async function applyTemplate(name) {
+  const errEl = document.getElementById('templates-modal-error');
+  errEl.style.display = 'none';
+  try {
+    const resp = await apiFetch(TEMPLATES_API + '/apply/' + encodeURIComponent(name), {
+      method: 'POST'
+    });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(body.error || 'Failed to apply template');
+    }
+    templatesModal.classList.remove('open');
+    fetchCustomPanels();
+  } catch (e) {
+    errEl.textContent = String(e);
+    errEl.style.display = 'block';
+  }
+}
 
 // ── API Key Authentication ─────────────────────────────────────────────────────
 // The API key is stored in localStorage and sent with all /api/ requests.
@@ -3581,6 +4018,53 @@ fetchAnomalies();
 setInterval(fetchAnomalies, 30000);
 
 // ── 资源预测与容量规划 ─────────────────────────────────────────────────────────
+let allChanges = [];
+
+async function fetchChanges() {
+  try {
+    const res = await fetch(INGEST_BASE + '/api/v1/changes');
+    allChanges = await res.json() || [];
+    renderChanges(allChanges);
+  } catch (e) { console.warn('changes fetch error:', e); }
+}
+
+function renderChanges(changes) {
+  const listEl = document.getElementById('changes-list');
+  const countEl = document.getElementById('changes-count');
+  if (!changes || changes.length === 0) {
+    listEl.innerHTML = '<div style="color:var(--muted);font-size:0.85rem">No detected shifts yet.</div>';
+    countEl.textContent = '';
+    return;
+  }
+
+  countEl.textContent = `(${changes.length})`;
+  listEl.innerHTML = changes.slice(0, 12).map(change => {
+    const ts = new Date(change.timestamp).toLocaleString();
+    const delta = change.after_mean - change.before_mean;
+    const color = delta >= 0 ? 'var(--green)' : 'var(--red)';
+    const label = delta >= 0 ? 'UP' : 'DOWN';
+    return `<div style="border:1px solid var(--border);border-radius:8px;padding:0.8rem;background:rgba(13,17,23,0.45)">
+      <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
+        <strong style="font-size:0.92rem">${change.metric}</strong>
+        <span style="padding:2px 8px;border-radius:999px;background:${color}22;color:${color};border:1px solid ${color};font-size:0.72rem;font-weight:700">${label}</span>
+        <span style="margin-left:auto;color:var(--muted);font-size:0.78rem">${ts}</span>
+      </div>
+      <div style="display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:0.45rem;font-size:0.82rem">
+        <span style="color:var(--muted)">before <strong style="color:var(--text)">${(+change.before_mean).toFixed(2)}</strong></span>
+        <span style="color:var(--muted)">after <strong style="color:${color}">${(+change.after_mean).toFixed(2)}</strong></span>
+        <span style="color:var(--muted)">score <strong style="color:var(--text)">${(+change.significance_score).toFixed(2)}</strong></span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  if (btn.dataset.tab === 'metrics') btn.addEventListener('click', fetchChanges);
+});
+
+fetchChanges();
+setInterval(fetchChanges, 30000);
+
 let fcChart = null;
 
 // 加载容量摘要卡片（CPU/内存/磁盘）

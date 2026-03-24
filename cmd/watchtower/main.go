@@ -10,46 +10,59 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/apaqa/watchtower/internal/admin"
 	"github.com/apaqa/watchtower/internal/agent"
 	"github.com/apaqa/watchtower/internal/alert"
-	"github.com/apaqa/watchtower/internal/admin"
 	"github.com/apaqa/watchtower/internal/anomaly"
+	"github.com/apaqa/watchtower/internal/audit"
 	"github.com/apaqa/watchtower/internal/auth"
+	"github.com/apaqa/watchtower/internal/compare"
 	"github.com/apaqa/watchtower/internal/config"
 	"github.com/apaqa/watchtower/internal/correlation"
-	"github.com/apaqa/watchtower/internal/forecast"
-	"github.com/apaqa/watchtower/internal/grafana"
-	"github.com/apaqa/watchtower/internal/audit"
-	"github.com/apaqa/watchtower/internal/health"
-	"github.com/apaqa/watchtower/internal/incident"
-	"github.com/apaqa/watchtower/internal/model"
-	"github.com/apaqa/watchtower/internal/oncall"
-	"github.com/apaqa/watchtower/internal/plugin"
-	"github.com/apaqa/watchtower/internal/quota"
-	"github.com/apaqa/watchtower/internal/tenant"
 	"github.com/apaqa/watchtower/internal/dashboard"
 	"github.com/apaqa/watchtower/internal/export"
-	"github.com/apaqa/watchtower/internal/synthetic"
-	"github.com/apaqa/watchtower/internal/webhook"
+	"github.com/apaqa/watchtower/internal/forecast"
+	"github.com/apaqa/watchtower/internal/grafana"
+	"github.com/apaqa/watchtower/internal/health"
+	"github.com/apaqa/watchtower/internal/incident"
 	"github.com/apaqa/watchtower/internal/ingest"
 	"github.com/apaqa/watchtower/internal/logstore"
+	"github.com/apaqa/watchtower/internal/model"
 	"github.com/apaqa/watchtower/internal/notify"
+	"github.com/apaqa/watchtower/internal/oncall"
 	"github.com/apaqa/watchtower/internal/pipeline"
+	"github.com/apaqa/watchtower/internal/plugin"
 	"github.com/apaqa/watchtower/internal/probe"
 	"github.com/apaqa/watchtower/internal/procmon"
+	"github.com/apaqa/watchtower/internal/quota"
 	"github.com/apaqa/watchtower/internal/registry"
+	"github.com/apaqa/watchtower/internal/replay"
+	"github.com/apaqa/watchtower/internal/savedquery"
 	"github.com/apaqa/watchtower/internal/servicemap"
 	"github.com/apaqa/watchtower/internal/slo"
 	"github.com/apaqa/watchtower/internal/statuspage"
+	"github.com/apaqa/watchtower/internal/synthetic"
+	"github.com/apaqa/watchtower/internal/tags"
+	"github.com/apaqa/watchtower/internal/tenant"
 	"github.com/apaqa/watchtower/internal/tracestore"
 	"github.com/apaqa/watchtower/internal/tsdb"
+	"github.com/apaqa/watchtower/internal/webhook"
 )
 
 func main() {
 	// ── 1. Load configuration (use defaults when file is missing) ─────────────
-	cfg, err := config.Load("watchtower.yaml")
+	cfg, report, err := config.LoadAndValidate("watchtower.yaml")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
+		os.Exit(1)
+	}
+	for _, warning := range report.Warnings {
+		fmt.Fprintf(os.Stderr, "config warning: %s\n", warning)
+	}
+	if report.HasErrors() {
+		for _, validationErr := range report.Errors {
+			fmt.Fprintf(os.Stderr, "config error: %s\n", validationErr)
+		}
 		os.Exit(1)
 	}
 	fmt.Printf("config loaded — ingest port: %d, dashboard port: %d, endpoint probes: %d\n",
@@ -138,6 +151,10 @@ func main() {
 	anomalyDetector.Start()
 	defer anomalyDetector.Stop()
 	correlator := correlation.New(db)
+	compareEngine := compare.New(db)
+	changeDetector := compare.NewChangeDetector(db)
+	changeDetector.Start()
+	defer changeDetector.Stop()
 	forecaster := forecast.New(db)
 	grafanaHandler := grafana.New(db, alertEng)
 
@@ -202,6 +219,13 @@ func main() {
 
 	// ── 5c. Initialize custom panel store ────────────────────────────────────
 	panelStore := dashboard.NewPanelStore()
+	tagManager := tags.NewManager()
+	savedQueryStore := savedquery.NewStore()
+	replayManager, err := replay.New(db, "watchtower-data")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "replay manager init failed: %v\n", err)
+		os.Exit(1)
+	}
 
 	// ── 6. Initialize probe manager and pre-load endpoints from config ────────
 	probeMgr := probe.NewManager(db)
@@ -276,6 +300,9 @@ func main() {
 	ingestSrv.RegisterProbeManager(probeMgr)
 	ingestSrv.RegisterTraceStore(traceStore)
 	ingestSrv.RegisterAgentRegistry(agentRegistry)
+	ingestSrv.RegisterReplayManager(replayManager)
+	ingestSrv.RegisterTagManager(tagManager)
+	ingestSrv.RegisterSavedQueryStore(savedQueryStore)
 	ingestSrv.RegisterNotifyRouter(notifyRouter)
 	ingestSrv.RegisterServiceMapBuilder(svcMapBuilder)
 	ingestSrv.RegisterSLOStore(sloStore)
@@ -285,6 +312,7 @@ func main() {
 	ingestSrv.RegisterStatusPage(statusPage)
 	ingestSrv.RegisterAnomalyDetector(anomalyDetector)
 	ingestSrv.RegisterCorrelator(correlator)
+	ingestSrv.RegisterCompareEngine(compareEngine, changeDetector)
 	ingestSrv.RegisterForecaster(forecaster)
 	ingestSrv.RegisterRetentionEngine(retentionEngine)
 	ingestSrv.RegisterAdminHandler(adminHandler)
@@ -455,6 +483,8 @@ func main() {
 	fmt.Printf("Status:  %s/status\n", base)
 	fmt.Printf("Anomaly: %s/api/v1/anomalies\n", base)
 	fmt.Printf("Correl:  %s/api/v1/correlate?a=cpu_usage_percent&b=memory_usage_percent&window=30m\n", base)
+	fmt.Printf("Compare: %s/api/v1/compare?metric=cpu_usage_percent&current=1h&previous=1h\n", base)
+	fmt.Printf("Changes: %s/api/v1/changes\n", base)
 	fmt.Printf("Forecast:%s/api/v1/forecast?metric=cpu_usage_percent\n", base)
 	fmt.Printf("Capacity:%s/api/v1/capacity\n", base)
 	fmt.Printf("Retain:  %s/api/v1/retention\n", base)
@@ -469,10 +499,14 @@ func main() {
 	fmt.Printf("Plugins: %s/api/v1/plugins\n", base)
 	fmt.Printf("Audit:   %s/api/v1/audit\n", base)
 	fmt.Printf("Tenants: %s/api/v1/tenants\n", base)
+	fmt.Printf("Tags:    %s/api/v1/tags\n", base)
+	fmt.Printf("Queries: %s/api/v1/queries\n", base)
 	fmt.Printf("Scrape:  %s/metrics  (Prometheus scrape endpoint)\n", base)
 	fmt.Printf("Prom:    %s/api/v1/metrics/prometheus  (Prometheus push)\n", base)
 	fmt.Printf("Panels:  http://localhost:%d/api/v1/dashboard/panels\n", cfg.Server.DashboardPort)
+	fmt.Printf("Tpls:    http://localhost:%d/api/v1/dashboard/templates\n", cfg.Server.DashboardPort)
 	fmt.Printf("Share:   http://localhost:%d/api/v1/dashboard/share\n", cfg.Server.DashboardPort)
+	fmt.Printf("Replay:  %s/api/v1/replay/recordings\n", base)
 	fmt.Printf("Webhook: %s/api/v1/webhook/github  (also /generic)\n", base)
 	fmt.Printf("Synth:   %s/api/v1/synthetic\n", base)
 	fmt.Println("Press Ctrl+C to exit")

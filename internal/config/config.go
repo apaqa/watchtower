@@ -10,26 +10,26 @@ import (
 
 // Config 是顶级配置结构，对应 watchtower.yaml 文件
 type Config struct {
-	Server            ServerConfig        `yaml:"server"`
-	Agent             AgentConfig         `yaml:"agent"`
-	Retention         RetentionConfig     `yaml:"retention"`
+	Server            ServerConfig            `yaml:"server"`
+	Agent             AgentConfig             `yaml:"agent"`
+	Retention         RetentionConfig         `yaml:"retention"`
 	RetentionPolicies []RetentionPolicyConfig `yaml:"retention_policies"`
-	Endpoints         []EndpointConfig    `yaml:"endpoints"`
-	Alerts            []AlertConfig       `yaml:"alerts"`
-	APIKeys           []APIKeyConfig      `yaml:"api_keys"`
-	Notifications     NotificationsConfig `yaml:"notifications"`
-	Quotas            []QuotaConfig       `yaml:"quotas"`       // 自定义资源配额
-	RateLimit         RateLimitConfig     `yaml:"rate_limit"`   // API 速率限制
-	Plugins           []PluginConfig      `yaml:"plugins"`      // 插件配置（覆盖内置默认值）
-	Webhooks          []WebhookReceiverConfig `yaml:"webhooks"` // Webhook 接收端配置
+	Endpoints         []EndpointConfig        `yaml:"endpoints"`
+	Alerts            []AlertConfig           `yaml:"alerts"`
+	APIKeys           []APIKeyConfig          `yaml:"api_keys"`
+	Notifications     NotificationsConfig     `yaml:"notifications"`
+	Quotas            []QuotaConfig           `yaml:"quotas"`          // 自定义资源配额
+	RateLimit         RateLimitConfig         `yaml:"rate_limit"`      // API 速率限制
+	Plugins           []PluginConfig          `yaml:"plugins"`         // 插件配置（覆盖内置默认值）
+	Webhooks          []WebhookReceiverConfig `yaml:"webhooks"`        // Webhook 接收端配置
 	SyntheticTests    []SyntheticTestConfig   `yaml:"synthetic_tests"` // 合成监控测试
 }
 
 // WebhookReceiverConfig 描述一个自定义 Webhook 接收端
 type WebhookReceiverConfig struct {
-	Name  string                  `yaml:"name"`
-	Path  string                  `yaml:"path"`
-	Rules []WebhookExtractRule    `yaml:"extract_rules"`
+	Name  string               `yaml:"name"`
+	Path  string               `yaml:"path"`
+	Rules []WebhookExtractRule `yaml:"extract_rules"`
 }
 
 // WebhookExtractRule 描述从 Webhook JSON 提取指标的规则
@@ -41,10 +41,10 @@ type WebhookExtractRule struct {
 
 // SyntheticTestConfig 描述一个合成监控测试
 type SyntheticTestConfig struct {
-	Name     string                    `yaml:"name"`
-	Interval int                       `yaml:"interval_seconds"`
-	Timeout  int                       `yaml:"timeout_ms"`
-	Steps    []SyntheticStepConfig     `yaml:"steps"`
+	Name     string                `yaml:"name"`
+	Interval int                   `yaml:"interval_seconds"`
+	Timeout  int                   `yaml:"timeout_ms"`
+	Steps    []SyntheticStepConfig `yaml:"steps"`
 }
 
 // SyntheticStepConfig 描述合成测试中的单个步骤
@@ -139,9 +139,9 @@ type ChannelConfig struct {
 
 // RetentionPolicyConfig 描述一条自定义数据保留策略
 type RetentionPolicyConfig struct {
-	Name         string `yaml:"name"`           // 策略唯一名称
-	MatchPattern string `yaml:"match_pattern"`  // 正则表达式，匹配指标名称
-	MaxAgeSecs   int64  `yaml:"max_age_seconds"` // 最大保留秒数；0 = 不限制
+	Name         string `yaml:"name"`                  // 策略唯一名称
+	MatchPattern string `yaml:"match_pattern"`         // 正则表达式，匹配指标名称
+	MaxAgeSecs   int64  `yaml:"max_age_seconds"`       // 最大保留秒数；0 = 不限制
 	MaxPoints    int    `yaml:"max_points_per_series"` // 最大数据点数；0 = 不限制
 }
 
@@ -187,6 +187,16 @@ func Load(path string) (*Config, error) {
 	// YAML 中的零值字段会覆盖 Default() 的值，在此补充
 	cfg.applyDefaults()
 	return cfg, nil
+}
+
+// LoadAndValidate 載入設定檔並執行驗證，供 CLI 與伺服器共用。
+func LoadAndValidate(path string) (*Config, Report, error) {
+	cfg, err := Load(path)
+	if err != nil {
+		return nil, Report{}, err
+	}
+	report := Validate(cfg)
+	return cfg, report, nil
 }
 
 // IngestAddr 返回摄入服务的监听地址字符串

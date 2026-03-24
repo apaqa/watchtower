@@ -6,38 +6,43 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
-	"github.com/apaqa/watchtower/internal/alert"
 	"github.com/apaqa/watchtower/internal/admin"
-	"github.com/apaqa/watchtower/internal/synthetic"
-	"github.com/apaqa/watchtower/internal/webhook"
+	"github.com/apaqa/watchtower/internal/alert"
 	"github.com/apaqa/watchtower/internal/anomaly"
 	"github.com/apaqa/watchtower/internal/audit"
-	"github.com/apaqa/watchtower/internal/health"
-	"github.com/apaqa/watchtower/internal/incident"
-	"github.com/apaqa/watchtower/internal/oncall"
-	"github.com/apaqa/watchtower/internal/plugin"
-	"github.com/apaqa/watchtower/internal/quota"
-	"github.com/apaqa/watchtower/internal/tenant"
 	"github.com/apaqa/watchtower/internal/auth"
+	"github.com/apaqa/watchtower/internal/compare"
 	"github.com/apaqa/watchtower/internal/correlation"
+	"github.com/apaqa/watchtower/internal/export"
 	"github.com/apaqa/watchtower/internal/forecast"
 	"github.com/apaqa/watchtower/internal/grafana"
-	"github.com/apaqa/watchtower/internal/export"
+	"github.com/apaqa/watchtower/internal/health"
+	"github.com/apaqa/watchtower/internal/incident"
 	"github.com/apaqa/watchtower/internal/logstore"
 	"github.com/apaqa/watchtower/internal/model"
 	"github.com/apaqa/watchtower/internal/notify"
+	"github.com/apaqa/watchtower/internal/oncall"
 	"github.com/apaqa/watchtower/internal/pipeline"
+	"github.com/apaqa/watchtower/internal/plugin"
 	"github.com/apaqa/watchtower/internal/probe"
 	"github.com/apaqa/watchtower/internal/procmon"
+	"github.com/apaqa/watchtower/internal/quota"
 	"github.com/apaqa/watchtower/internal/registry"
+	"github.com/apaqa/watchtower/internal/replay"
+	"github.com/apaqa/watchtower/internal/savedquery"
 	"github.com/apaqa/watchtower/internal/servicemap"
 	"github.com/apaqa/watchtower/internal/slo"
 	"github.com/apaqa/watchtower/internal/statuspage"
+	"github.com/apaqa/watchtower/internal/synthetic"
+	"github.com/apaqa/watchtower/internal/tags"
+	"github.com/apaqa/watchtower/internal/tenant"
 	"github.com/apaqa/watchtower/internal/tracestore"
 	"github.com/apaqa/watchtower/internal/tsdb"
+	"github.com/apaqa/watchtower/internal/webhook"
 	"github.com/apaqa/watchtower/internal/wql"
 )
 
@@ -62,6 +67,7 @@ func New(addr string, db *tsdb.TSDB) (*Server, error) {
 
 	// 注册 POST /api/v1/metrics 路由
 	mux.HandleFunc("/api/v1/metrics", s.handleMetrics)
+	mux.HandleFunc("/api/v1/metrics/names", s.handleMetricNames)
 	// 注册 GET /api/v1/query 路由（WQL 查询接口）
 	mux.HandleFunc("/api/v1/query", s.handleQuery)
 	// 注册 POST /api/v1/metrics/prometheus 路由（Prometheus 文本格式摄入）
@@ -141,6 +147,21 @@ func (s *Server) RegisterAgentRegistry(reg *registry.Registry) {
 	registry.RegisterRoutes(s.mux, reg)
 }
 
+// RegisterReplayManager registers metric record/replay APIs.
+func (s *Server) RegisterReplayManager(m *replay.Manager) {
+	replay.RegisterRoutes(s.mux, m)
+}
+
+// RegisterTagManager 注册标签 API 路由。
+func (s *Server) RegisterTagManager(manager *tags.Manager) {
+	tags.RegisterRoutes(s.mux, manager)
+}
+
+// RegisterSavedQueryStore 注册已保存查询 API 路由。
+func (s *Server) RegisterSavedQueryStore(store *savedquery.Store) {
+	savedquery.RegisterRoutes(s.mux, store)
+}
+
 // RegisterNotifyRouter 注册通知历史 API 路由（必须在 Start 之前调用）
 func (s *Server) RegisterNotifyRouter(r *notify.Router) {
 	notify.RegisterRoutes(s.mux, r.History())
@@ -184,6 +205,10 @@ func (s *Server) RegisterAnomalyDetector(d *anomaly.Detector) {
 // RegisterCorrelator 注册指标相关分析 API 路由（必须在 Start 之前调用）
 func (s *Server) RegisterCorrelator(c *correlation.Correlator) {
 	correlation.RegisterRoutes(s.mux, c)
+}
+
+func (s *Server) RegisterCompareEngine(engine *compare.Engine, detector *compare.ChangeDetector) {
+	compare.RegisterRoutes(s.mux, engine, detector)
 }
 
 // RegisterForecaster 注册资源预测和容量规划 API 路由（必须在 Start 之前调用）
@@ -449,4 +474,20 @@ func (s *Server) handleLogSingle(w http.ResponseWriter, r *http.Request) {
 	}
 	s.logStore.Write(entry)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleMetricNames 处理 GET /api/v1/metrics/names，返回当前所有指标名称。
+func (s *Server) handleMetricNames(w http.ResponseWriter, r *http.Request) {
+	setCORSHeaders(w)
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"隞??GET ?寞?"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	names := s.db.ListMetrics()
+	sort.Strings(names)
+	if names == nil {
+		names = []string{}
+	}
+	json.NewEncoder(w).Encode(names)
 }

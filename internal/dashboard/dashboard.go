@@ -28,11 +28,11 @@ var upgrader = websocket.Upgrader{
 
 // AlertInfo 是 WebSocket 消息中内嵌的轻量告警摘要
 type AlertInfo struct {
-	Name     string `json:"name"`
-	State    string `json:"state"`
-	Severity string `json:"severity"`
+	Name     string  `json:"name"`
+	State    string  `json:"state"`
+	Severity string  `json:"severity"`
 	Value    float64 `json:"value"`
-	Message  string `json:"message"`
+	Message  string  `json:"message"`
 }
 
 // wsMessage 是通过 WebSocket 推送给浏览器的消息结构
@@ -130,6 +130,7 @@ func (s *Server) SetLogStore(ls *logstore.Store) {
 // Must be called before Start.
 func (s *Server) SetPanelStore(ps *PanelStore) {
 	RegisterPanelRoutes(s.mux, ps)
+	RegisterTemplateRoutes(s.mux, ps)
 }
 
 // SetShareStore registers dashboard-sharing API routes on the dashboard server.

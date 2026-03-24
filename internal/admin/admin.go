@@ -159,7 +159,7 @@ func (h *Handler) handleReload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// 尝试读取并解析配置文件
-	newCfg, err := config.Load(h.configPath)
+	newCfg, report, err := config.LoadAndValidate(h.configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// 文件不存在时不报错，仅返回提示
@@ -173,14 +173,24 @@ func (h *Handler) handleReload(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
+	if report.HasErrors() {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]any{
+			"error":    "config validation failed",
+			"warnings": report.Warnings,
+			"errors":   report.Errors,
+		})
+		return
+	}
 
 	// 热更新内存中的配置（基础字段；复杂组件如告警/探针需重启）
 	h.cfg.Server = newCfg.Server
 	h.cfg.Agent = newCfg.Agent
 	h.cfg.Retention = newCfg.Retention
 
-	json.NewEncoder(w).Encode(map[string]string{
-		"status":  "ok",
-		"message": "config reloaded (server/agent/retention fields updated)",
+	json.NewEncoder(w).Encode(map[string]any{
+		"status":   "ok",
+		"message":  "config reloaded (server/agent/retention fields updated)",
+		"warnings": report.Warnings,
 	})
 }
