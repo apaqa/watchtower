@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -49,7 +50,20 @@ import (
 	"github.com/apaqa/watchtower/internal/webhook"
 )
 
+const version = "0.26.0"
+
 func main() {
+	// ── Banner ────────────────────────────────────────────────────────────────
+	fmt.Print(`
+ __    __         _       _    _____
+/ / /\ \ \  __ _| |_ ___| |__|_   _|_____ _____ _ __
+\ \/  \/ / / _` + "`" + ` | __/ __| '_ \ | |/ _ \ \ / / _ \ '__|
+ \  /\  / | (_| | || (__| | | || | (_) \ V /  __/ |
+  \/  \/   \__,_|\__\___|_| |_||_|\___/ \_/ \___|_|
+
+  Version ` + version + ` · ` + runtime.Version() + ` · ` + runtime.GOOS + `/` + runtime.GOARCH + `
+`)
+
 	// ── 1. Load configuration (use defaults when file is missing) ─────────────
 	cfg, report, err := config.LoadAndValidate("watchtower.yaml")
 	if err != nil {
@@ -465,7 +479,15 @@ func main() {
 
 	// ── 10. Print startup summary ─────────────────────────────────────────────
 	base := fmt.Sprintf("http://localhost:%d", cfg.Server.IngestPort)
-	fmt.Printf("WatchTower started — Dashboard: http://localhost:%d\n", cfg.Server.DashboardPort)
+	fmt.Printf("  Ingest port    : %d    Dashboard port : %d\n", cfg.Server.IngestPort, cfg.Server.DashboardPort)
+	fmt.Printf("  Endpoint probes: %-4d  Alert rules    : %d\n", len(cfg.Endpoints), len(cfg.Alerts))
+	fmt.Printf("  Webhook configs: %-4d  Synthetic tests: %d\n", len(cfg.Webhooks), len(cfg.SyntheticTests))
+	fmt.Printf("  API keys       : %-4d  Plugins        : %d\n", len(cfg.APIKeys), len(cfg.Plugins))
+	fmt.Println()
+	fmt.Printf("  Dashboard  → http://localhost:%d\n", cfg.Server.DashboardPort)
+	fmt.Printf("  Status page→ %s/status\n", base)
+	fmt.Println()
+	fmt.Printf("WatchTower v%s started — Dashboard: http://localhost:%d\n", version, cfg.Server.DashboardPort)
 	fmt.Printf("Ingest:  %s/api/v1/metrics\n", base)
 	fmt.Printf("WQL:     %s/api/v1/query?q=avg(cpu_usage_percent[5m])\n", base)
 	fmt.Printf("Alerts:  %s/api/v1/alerts/rules\n", base)

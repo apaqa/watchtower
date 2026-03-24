@@ -1,284 +1,133 @@
 # WatchTower
 
-A lightweight, self-contained monitoring platform written in Go. A single binary collects system metrics, stores time-series data, evaluates alert rules, tails logs, probes HTTP endpoints, records distributed traces, and manages a registry of connected agents — all without external databases or message queues.
+![Tests](https://img.shields.io/badge/tests-471%2B-brightgreen)
+![Go](https://img.shields.io/badge/go-1.21%2B-00ADD8)
+![License](https://img.shields.io/badge/license-MIT-blue)
+
+A self-hosted observability platform built in Go. WatchTower collects metrics,
+logs, and traces; evaluates alert rules; and serves a live dashboard — all from
+a single binary with zero runtime dependencies.
+
+---
+
+## Features
+
+| Category | Capabilities |
+|----------|-------------|
+| **Ingestion** | JSON metrics, Prometheus push/scrape, log batches, distributed traces, GitHub & generic webhooks |
+| **Storage** | In-memory TSDB with WAL persistence, downsampling (1 m / 5 m tiers), configurable retention |
+| **Query** | WQL — a time-series query language with aggregations, math, and label filtering |
+| **Alerting** | Rule engine with WQL expressions, severity levels, state machine (pending → firing → normal), multi-channel notifications |
+| **Monitoring** | HTTP endpoint probing, synthetic multi-step transactions, process & system metrics, Kubernetes health checks |
+| **Observability** | Z-score anomaly detection, Pearson metric correlation, resource forecasting, capacity planning |
+| **Security** | API-key auth, RBAC (admin / operator / viewer), per-tenant metric prefixing, audit log, token-bucket rate limiting |
+| **Integrations** | Grafana SimpleJSON, on-call scheduling, incident management, plugin system (Network / GPU / Docker) |
+
+---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         WatchTower Process                           │
-│                                                                      │
-│  ┌───────────┐  POST /api/v1/metrics       ┌─────────────────────┐  │
-│  │  System   │ ──────────────────────────▶ │  Ingest API  :9090  │  │
-│  │  Agent    │  POST /api/v1/agents/       │  WQL Query API       │  │
-│  │(gopsutil) │       register (heartbeat)  │  Alert API           │  │
-│  └───────────┘                             │  Log API             │  │
-│                                            │  Probe API           │  │
-│  ┌───────────┐  POST /api/v1/logs          │  Trace API           │  │
-│  │  Log      │ ──────────────────────────▶ │  Agent Registry API  │  │
-│  │  Agent    │                             └──────────┬──────────┘  │
-│  └───────────┘                                        │ Write/Query  │
-│                                                       ▼              │
-│  ┌───────────┐  probe_status metric         ┌──────────────────┐    │
-│  │  Endpoint │ ──────────────────────────▶  │  In-Memory TSDB  │    │
-│  │  Probes   │                              │ + Gorilla Disk    │    │
-│  └───────────┘                              │   Persistence     │    │
-│                                             └────────┬─────────┘    │
-│  ┌───────────┐  POST /api/v1/traces                  │              │
-│  │  Trace    │ ──────────────────────────▶  ┌────────────────┐      │
-│  │  Agent    │                              │  Trace Store   │      │
-│  └───────────┘                              │(1000 / 1h TTL) │      │
-│                                             └────────┬───────┘      │
-│                                                      │ REST          │
-│                                                      ▼               │
-│                                      ┌───────────────────────────┐  │
-│  Browser ◀─── WebSocket ──────────   │   Dashboard  :8080        │  │
-│           ◀─── HTML / JS ──────────  │   Metrics · Logs · Alerts │  │
-│           ◀─── Panel API ──────────  │   Endpoints · Traces      │  │
-│                                      │   Agents · Custom Panels  │  │
-│                                      └───────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
+  ┌─────────────────────────────────────────────────────────┐
+  │                        Clients                          │
+  │  curl / agent / Prometheus / GitHub webhook / browser   │
+  └──────────────┬──────────────────────────┬───────────────┘
+                 │ :9090                    │ :8080
+     ┌───────────▼──────────┐   ┌───────────▼──────────┐
+     │   Ingest Server      │   │  Dashboard Server     │
+     │  Auth → RBAC →       │   │  WebSocket push       │
+     │  Tenant → Audit →    │   │  Static SPA (tabs)    │
+     │  Rate-limit → Mux    │   │  Share links /share/  │
+     └───────────┬──────────┘   └──────────────────────-┘
+                 │
+     ┌───────────▼──────────────────────────────────────┐
+     │                  Core Services                    │
+     │  TSDB · LogStore · TraceStore · AlertEngine       │
+     │  ProbeManager · SyntheticMonitor · AuditStore     │
+     │  PipelineAggregator · AnomalyDetector · Forecaster│
+     └───────────────────────────────────────────────────┘
 ```
 
-## Features
+---
 
-### System Agent
-- Collects CPU, memory, and disk usage every 5 seconds via `gopsutil`
-- Pushes metrics to the local ingest API as JSON
+## Quick Start
 
-### Time-Series Database
-- In-memory storage with 1-hour rolling window
-- **Gorilla-encoded** disk persistence (Delta-of-Delta timestamps + XOR float values)
-- Chunks written to `watchtower-data/chunks/*.wtkc`, auto-restored on startup
-- Background flush every 30 seconds; final flush on shutdown
+```bash
+git clone https://github.com/apaqa/watchtower
+cd watchtower
+go run ./cmd/watchtower          # starts on :9090 (API) and :8080 (dashboard)
+open http://localhost:8080        # live dashboard
+```
 
-### WQL Query Language
-- PromQL-inspired query language for the TSDB
-- Aggregation functions: `avg`, `max`, `min`, `sum`, `count`, `rate`, `last`
-- Label filtering: `avg(cpu_usage_percent{host="node1"}[5m])`
-- Time ranges: `[1m]`, `[5m]`, `[15m]`, `[1h]`, `[1d]`
-- Arithmetic: `avg(memory_used_bytes[5m]) / 1073741824`
-- Comparison (returns bool): `avg(cpu_usage_percent[5m]) > 80`
-- Group-by: `sum(cpu_usage_percent[5m]) by (host)`
+Push your first metric:
 
-### Alert Engine
-- Configurable rules evaluated against WQL expressions
-- State machine: `inactive → pending → firing → resolved`
-- Optional `duration` to require sustained condition before firing
-- Webhook notifications with JSON payload on state transitions
+```bash
+curl -X POST http://localhost:9090/api/v1/metrics \
+  -H 'Content-Type: application/json' \
+  -d '[{"name":"cpu_pct","value":42.5,"timestamp":'$(date +%s000)'}]'
+```
 
-### Log Collection
-- In-memory ring buffer: 10 000 entries per source, 24-hour retention
-- Full-text search and `/regex/` pattern matching
-- Batch and single-entry ingestion APIs
-- Log agent generates synthetic system events every 10 seconds
+---
 
-### HTTP Endpoint Monitoring
-- Per-probe goroutines poll any HTTP(S) endpoint on a configurable interval
-- Records response time and up/down status; writes `probe_status` and `probe_response_ms` to TSDB
-- Stores last 100 results per probe; calculates uptime percentage
-- Runtime add/remove via REST API
+## Configuration
 
-### Prometheus Compatibility
-- **Ingest**: `POST /api/v1/metrics/prometheus` accepts the Prometheus text exposition format; all metric types (counter, gauge, histogram, summary) are stored as regular time-series
-- **Scrape**: `GET /metrics` exports all TSDB metrics in Prometheus text format so WatchTower itself can be scraped by any Prometheus instance
-- Comment lines (`# HELP`, `# TYPE`) are silently skipped; invalid lines are skipped without aborting the batch
-- Labels, escaped label values, timestamps (optional, milliseconds), and special values (`+Inf`, `-Inf`, `NaN`) are all supported
-
-### API Key Authentication
-- **Open mode**: if no keys are configured, all `/api/` endpoints are publicly accessible
-- **Authenticated mode**: once any key is added (via config or API), every `/api/` request must include `X-API-Key: <key>` header (or `?api_key=<key>` query param)
-- Permissions: `read` · `write` · `admin` (admin implies read + write)
-- `/metrics` scrape endpoint and the dashboard static files are always public
-- Keys can be pre-loaded from `watchtower.yaml` under `api_keys:` or created dynamically via the key management API
-- Generated keys are 64-character random hex strings; only shown once at creation time
-- The dashboard header includes an API Key input that stores the key in `localStorage` and injects it into all API requests
-
-### Distributed Tracing
-- In-memory trace store: up to 1 000 traces, 1-hour retention, ring-buffer eviction
-- Thread-safe with separate index by `trace_id` and by `service_name`
-- Ingestion accepts any batch of spans; spans with the same `trace_id` are merged into one trace
-- `Trace` computed metadata: `start_time`, `duration_ms`, `service_names`, `has_error`
-- Trace agent generates synthetic 4-span traces every 10 seconds simulating a real API call chain
-- 20% chance of error spans for realistic error-rate simulation
-
-### Agent Registry
-- Agents register via `POST /api/v1/agents/register` on startup and send heartbeats every 15 seconds
-- Thread-safe in-memory registry indexed by `agent_id` (UUID v4, generated at startup)
-- Background health-check goroutine marks agents offline after 30 seconds of silence
-- Each agent reports: `hostname`, `ip_address` (auto-detected), `os`, `arch`, `labels`
-- Full CRUD REST API: list, get, delete agents
-- System agent now embeds `agent_id` label on every metric data point
-
-### Service Map
-- Analyzes all in-memory traces to build a live service dependency graph
-- **Nodes**: each unique `service_name` seen across spans, typed automatically by keyword matching (api/database/cache/queue/external)
-- **Edges**: directed, from parent span's service to child span's service; only cross-service calls appear as edges
-- Per-node metrics: `request_count`, `error_count`, `avg_latency_ms`
-- Per-edge metrics: `request_count`, `error_rate` (0–1), `avg_latency_ms`
-- `GET /api/v1/servicemap` returns `{ nodes: [...], edges: [...] }` as JSON
-- Dashboard **Service Map** tab: SVG visualization with circular layout, color-coded by type, red border on high-error nodes (>5%), auto-refreshes every 10 seconds
-
-### SLO / SLI Tracking
-- Define SLOs with a name, target percentage (0–100 exclusive), WQL query, metric type, and window (1d/7d/30d)
-- **SLI**: result of the WQL query clamped to 0–100; scalar, bool (`true=100`, `false=0`), or vector average
-- **Error budget**: `(1 − target%) × window_minutes` total; `(1 − sli%) × window_minutes` consumed
-- `GET /api/v1/slos` returns all SLOs with current SLI, budget total, budget consumed, budget remaining %
-- `POST /api/v1/slos` creates an SLO; `DELETE /api/v1/slos/{name}` removes it
-- Dashboard **SLO Status** section in Metrics tab: progress bar per SLO (green/yellow/red), "+ Add SLO" modal
-
-### Anomaly Detection
-- Background goroutine scans all active TSDB metric series every 30 seconds
-- **Z-score detection**: uses the last 30-minute rolling window as a baseline; flags the latest point as an anomaly if `|value − mean| / stddev ≥ 3`
-- Skips series with fewer than 5 samples or near-zero standard deviation (flat-line guard)
-- Severity classification: Z ≥ 5 → **high**, Z ≥ 3.5 → **medium**, Z ≥ 3 → **low**
-- Ring buffer retains the last 500 `AnomalyEvent` records
-- `GET /api/v1/anomalies` returns all recent events; `?metric=<name>` filters by metric name
-- Dashboard **Anomalies** section in Alerts tab: color-coded by severity (red/yellow/blue), shows actual vs. expected value and Z-score, live filter bar
-
-### Metric Correlation
-- Computes **Pearson correlation coefficient** between any two TSDB metrics over a configurable time window
-- Time windows: `5m`, `15m`, `30m`, `1h`, `6h`, `1d`
-- Aligns series by 1-minute buckets; only overlapping timestamps contribute to the coefficient
-- Interpretation labels: `strong_positive` (|r| ≥ 0.7) · `weak_positive` · `none` · `weak_negative` · `strong_negative`
-- Returns scatter-plot data points (`{x, y}` pairs) alongside the coefficient for direct Chart.js rendering
-- **Auto-correlation**: `GET /api/v1/correlate/auto?metric=<name>` scans all other metrics and returns the top 5 most correlated (by |r|)
-- Dashboard **Correlations** widget in Metrics tab: two metric dropdowns, window selector, scatter chart, "Auto-correlate" button
-
-### Downsampling
-- Automatic background aggregation of high-resolution raw data into lower-resolution summaries (runs every 5 minutes)
-- Three tiers: raw (5s interval, 1h retention) → `metric:1m` (1-minute averages, 24h retention) → `metric:5m` (5-minute averages, 7-day retention)
-- Downsampled series stored with the same labels as the source, using name suffixes `:1m` / `:5m`
-- Bucket timestamps are always aligned to minute / 5-minute boundaries; only completed buckets are written (no partial-bucket bias)
-- Existing downsampled points are never overwritten — only new completed buckets are appended
-
-### Retention Policies
-- Three built-in policies: `raw` (≤1h), `1m-ds` (≤24h), `5m-ds` (≤7d) — aligned with the downsampling tiers
-- Custom policies configurable in `watchtower.yaml` under `retention_policies:` — each with `name`, `match_pattern` (regex), `max_age_seconds`, `max_points_per_series`
-- Custom policies take precedence over built-in policies when both match a series name
-- Background goroutine enforces all policies every 10 minutes; also callable on-demand via Admin GC API
-- `GET /api/v1/retention` — list all policies (built-in + custom)
-- `POST /api/v1/retention` — create a custom policy
-- `DELETE /api/v1/retention/{name}` — delete a custom policy (built-in policies are protected)
-
-### Admin API
-- `GET /api/v1/admin/status` — full system status: uptime, version, Go version, goroutine count, heap memory, TSDB series count, total data points
-- `POST /api/v1/admin/gc` — force TSDB garbage collection + Go runtime GC
-- `POST /api/v1/admin/snapshot` — flush TSDB data to disk immediately (no-op when storage is disabled)
-- `GET /api/v1/admin/config` — running config with API key values redacted (`***REDACTED***`)
-- `POST /api/v1/admin/reload` — re-parse `watchtower.yaml` and hot-update server/agent/retention fields (alert rules and endpoints require restart)
-- Dashboard **Admin** tab: system info cards, Force GC / Snapshot / Reload Config buttons, retention policy table with inline add/delete — auto-refreshes every 30 seconds
-
-### Resource Forecasting & Capacity Planning
-- **Linear regression** (`y = mx + b`) fitted over the most recent 30 minutes of TSDB data
-- **ForecastResult**: metric name, current value, predicted 1h / 24h / 7d, trend direction, confidence score (R²)
-- **Trend classification**: `increasing` / `decreasing` / `stable` based on per-hour relative change rate
-- **Exhaustion estimate**: for bounded metrics (e.g. `disk_usage_percent`), predicts the Unix timestamp when they will reach a configurable threshold
-- **Capacity report**: one-call JSON summary for CPU, Memory, and Disk — current avg, peak, trend, 24h prediction, days-until-full, and health status (`healthy` / `warning` / `critical`)
-- Health thresholds: CPU/Memory critical ≥ 90% predicted 24h; Disk critical ≤ 7 days until full, warning ≤ 30 days
-- `GET /api/v1/forecast?metric=<name>` — returns ForecastResult (1h/24h/7d predictions + trend + R²)
-- `GET /api/v1/forecast?metric=<name>&threshold=<value>` — returns ExhaustionEstimate (hours/days until threshold)
-- `GET /api/v1/capacity` — returns full CapacityReport for all system metrics
-- Dashboard **Forecasting & Capacity** section in Metrics tab: capacity summary cards (CPU/Memory/Disk) with trend arrow (↑↓→) and health badge; interactive forecast widget with dashed prediction line chart
-
-### Metric Comparison & Change Detection
-- **CompareResult**: `metric`, `current_avg`, `previous_avg`, `change_percent`, `direction` (`up` / `down` / `stable`)
-- `GET /api/v1/compare?metric=<name>&current=<window>&previous=<window>` compares the latest window against the immediately preceding window
-- `GET /api/v1/compare/report` returns a report for all known metrics; defaults to `current=1h` and `previous=1h`
-- **CUSUM-based change detection** scans recent metric behavior every 2 minutes and stores detected shifts as `ChangePoint`
-- **ChangePoint**: `metric`, `timestamp`, `before_mean`, `after_mean`, `significance_score`
-- `GET /api/v1/changes` lists all detected change points; `?metric=<name>` filters by metric name
-- Dashboard **Changes** section in the Metrics tab highlights the newest detected shifts with before/after averages and significance score
-
-### Incident Management
-
-- Create, update, and resolve **incidents** with severity (critical/major/minor) and status (investigating/identified/monitoring/resolved)
-- Full **timeline** tracking: created, updated, assigned, resolved, and comment events
-- Auto-create incidents when a monitored alert fires continuously for **> 5 minutes**
-- **Auto-assign** to the current on-call person when an incident is created
-- Notify the on-call person via the configured notification channel
-
-### On-Call Scheduling
-
-- Define **rotation schedules** with per-user time slots (start_hour, end_hour, days of week)
-- Timezone-aware: schedule is evaluated in the configured IANA timezone
-- Current on-call person displayed in a persistent **header widget**
-- Clicking the widget navigates to the Incidents tab with full schedule view
-
-### Audit Log
-
-- Append-only **ring buffer** (5 000 entries) recording all write operations automatically
-- Each entry: `timestamp_ms`, `user` (API key name / "anonymous"), `action` (create/update/delete), `resource_type`, `resource_id`, `details`, `ip_address`, `status` (success/denied)
-- `AuditMiddleware` wraps the HTTP handler chain — logs POST/PUT/PATCH/DELETE; skips GET/HEAD
-- 403/401 responses automatically marked as `denied`
-- `GET /api/v1/audit` — filter by `user`, `action`, `resource_type`; limited to 500 entries per request
-- Dashboard **Admin tab** → **Audit Log** section: scrollable table with action/resource filters
-
-### Role-Based Access Control (RBAC)
-
-- Three roles on `APIKey.Role`: **admin** › **operator** › **viewer**
-- **admin** — full access to all endpoints including key management, config, tenants, audit log
-- **operator** — can create/modify metrics, alerts, probes, incidents; cannot touch `/api/v1/auth/keys`, `/api/v1/admin/`, `/api/v1/tenants`, `/api/v1/audit`
-- **viewer** — read-only; only GET requests pass; all write methods return `403 Forbidden`
-- RBAC check is skipped when `Role` is empty (backward compatible with existing keys)
-- `APIKey` now carries `role` and `tenant_id` fields; both propagated via request context
-- Configured per key in `watchtower.yaml` `api_keys` section with `role:` field
-
-### Multi-Tenancy
-
-- Each tenant has: `id`, `name`, `api_key_prefix`, `metric_prefix`, `quota_overrides`
-- **Default tenant** (`id: "default"`) always present — zero prefix (full backward compatibility)
-- Metrics written by a non-default tenant are automatically prefixed: `<metric_prefix><name>`
-- `TenantMiddleware` extracts tenant from `APIKey.TenantID` and injects it into request context
-- `GET /api/v1/tenants` — list all tenants (admin only)
-- `POST /api/v1/tenants` — create a new tenant (admin only)
-- `GET /api/v1/tenants/{id}` — get a single tenant
-- `DELETE /api/v1/tenants/{id}` — remove a tenant (admin only; default cannot be deleted)
-- Configurable in `watchtower.yaml` via `api_keys[].tenant_id` field
-
-### Plugin System
-
-- Extensible **plugin architecture** for custom metric collectors
-- `Plugin` interface: `Name()`, `Version()`, `Init(config)`, `Collect()`, `Interval()`, `Stop()`
-- Each plugin runs its own goroutine at its configured interval; collected metrics written directly to TSDB
-- Built-in plugins (auto-loaded, skip gracefully if hardware/software unavailable):
-  - **network** — `network_bytes_sent/recv`, `network_packets_sent/recv`, `network_errors` per interface (via gopsutil)
-  - **gpu** — `gpu_usage_percent`, `gpu_memory_used_mb`, `gpu_temperature_celsius` per GPU (via nvidia-smi)
-  - **docker** — `container_cpu_percent`, `container_memory_mb`, `container_status` per running container (via docker stats)
-- `GET /api/v1/plugins` — list plugins with status (running/stopped/error), version, interval, last collected count
-- `POST /api/v1/plugins/{name}/stop` — stop a running plugin
-- `POST /api/v1/plugins/{name}/start` — start or restart a plugin
-- Configurable in `watchtower.yaml` via `plugins` section
-- Dashboard **Admin tab** → **Plugins** section: status badge, version, interval, start/stop toggle buttons
-
-### Kubernetes-Style Health Checks
-
-- **Liveness probe** (`GET /api/v1/health/live`) — always returns `200 OK` while the process is alive
-- **Readiness probe** (`GET /api/v1/health/ready`) — returns `200 OK` when all checks pass; `503` otherwise
-- **Full health report** (`GET /api/v1/health`) — JSON report with per-check status, message, and latency
-- Health statuses: `healthy`, `degraded`, `unhealthy`; overall status is the worst among all checks
-- Checks run every 15 seconds in the background; results are cached for zero-latency API responses
-- Built-in checks: TSDB availability, ingest service, probe manager
-- Dashboard **Admin tab** → **System Health** section: traffic-light indicators per check
-
-### Resource Quotas & Rate Limiting
-
-- Per-minute quotas for: `metrics_per_minute` (default 10 000), `logs_per_minute` (default 5 000), `api_requests_per_minute` (default 1 000), `series_count`, `storage_bytes`
-- `GET /api/v1/quotas` — list all quotas with current usage and reset timestamp
-- `PUT /api/v1/quotas/{resource}` — update a quota limit (`{"limit": 20000}`)
-- **Token-bucket rate limiter** per API key: configurable capacity and refill rate; `X-RateLimit-Limit/Remaining/Reset` headers on every response; `429 Too Many Requests` when exhausted
-- Configurable in `watchtower.yaml` via `quotas` and `rate_limit` sections
-- Dashboard **Admin tab** → **Resource Quotas** section: progress bars with colour coding (green/yellow/red)
-
-### Webhook Receiver
-
-- **GitHub webhooks**: receives push, pull_request, and issues events → stored as `LogEntry` with structured labels (`event`, `repo`, `ref`, `action`)
-- **Generic JSON webhook** (`POST /api/v1/webhook/generic?metric_name=X`): auto-extracts all numeric fields as metrics with label `field=<key>`
-- **Configured endpoints**: define custom paths with `ExtractRule` lists in `watchtower.yaml`; each rule specifies a `json_path` (e.g. `$.response_time`), `metric_name`, and optional `label_mappings`
-- Payload size capped at 2 MiB per request
-- Configure in `watchtower.yaml` via `webhooks:` section:
+`watchtower.yaml` (all fields optional — sensible defaults apply):
 
 ```yaml
+server:
+  ingest_port: 9090
+  dashboard_port: 8080
+
+agent:
+  enabled: true           # collect local system metrics every interval
+  interval_seconds: 15
+
+retention:
+  max_age_seconds: 604800 # 7 days
+  max_points_per_series: 10000
+
+api_keys:
+  - name: admin
+    key: "change-me"
+    role: admin            # admin | operator | viewer
+    tenant_id: default
+
+endpoints:                 # HTTP probes
+  - name: api-gateway
+    url: https://api.example.com/health
+    interval_seconds: 30
+    expected_status: 200
+
+alerts:
+  - name: high-cpu
+    wql_expression: avg(cpu_usage_percent[5m])
+    operator: ">"
+    threshold: 85
+    severity: warning
+
+notifications:
+  slack:
+    enabled: true
+    webhook_url: https://hooks.slack.com/services/XXX
+
+synthetic_tests:
+  - name: login-flow
+    interval_seconds: 60
+    timeout_ms: 5000
+    steps:
+      - name: get-token
+        method: POST
+        url: https://api.example.com/auth
+        body: '{"user":"probe","pass":"secret"}'
+        expected_status: 200
+        extract_vars:
+          token: $.access_token
+      - name: fetch-profile
+        url: https://api.example.com/me
+        headers:
+          Authorization: Bearer {token}
+        assert_body_contains: '"email"'
+
 webhooks:
   - name: myservice
     path: /api/v1/webhook/myservice
@@ -287,275 +136,37 @@ webhooks:
         metric_name: myservice_response_ms
         label_mappings:
           env: $.environment
+
+plugins:
+  - name: network
+    enabled: true
+  - name: docker
+    enabled: true
 ```
 
-### Synthetic Monitoring
+---
 
-- **Multi-step HTTP transaction checks** — each test chains multiple HTTP steps; variables extracted in one step can be used in subsequent steps via `{varName}` placeholders
-- Variable extraction: map `varName → $.json.path` in `extract_vars`; extracted values substitute `{varName}` in URL, body, and headers of later steps
-- Assertions: `expected_status` (default 200) and `assert_body_contains` per step
-- Results stored as TSDB metrics: `synthetic_duration_ms{test="name"}` and `synthetic_status{test="name"}` (1=pass, 0=fail)
-- Up to 20 history entries per test
-- `GET /api/v1/synthetic` — list all tests with last result
-- `POST /api/v1/synthetic` — register a new test (starts background loop immediately)
-- `GET /api/v1/synthetic/{name}/history` — full history for a test
-- Configure in `watchtower.yaml` via `synthetic_tests:` section:
+## WQL Reference
 
-```yaml
-synthetic_tests:
-  - name: login-flow
-    interval_seconds: 60
-    timeout_ms: 5000
-    steps:
-      - name: get-token
-        method: POST
-        url: https://api.example.com/auth/login
-        body: '{"user":"test","pass":"secret"}'
-        expected_status: 200
-        extract_vars:
-          token: $.access_token
-      - name: fetch-profile
-        url: https://api.example.com/me
-        headers:
-          Authorization: Bearer {token}
-        expected_status: 200
-        assert_body_contains: '"email"'
-```
+WatchTower Query Language — a Prometheus-inspired expression language.
 
-- Dashboard **Uptime tab** → **Synthetic Tests** table: name, step count, interval, pass/fail status, duration, last run time
+| Expression | Description |
+|------------|-------------|
+| `cpu_usage_percent` | Latest value of a metric |
+| `cpu_usage_percent[5m]` | All points in last 5 minutes |
+| `avg(cpu_usage_percent[5m])` | Average over window |
+| `sum(net_bytes_sent[1m])` | Sum over window |
+| `max(cpu_usage_percent[1h])` | Maximum |
+| `min(mem_available_bytes[30m])` | Minimum |
+| `p95(http_latency_ms[5m])` | 95th percentile |
+| `rate(requests_total[1m])` | Per-second rate |
+| `cpu_usage_percent > 80` | Threshold filter |
+| `avg(cpu_usage_percent[5m]) * 100` | Arithmetic |
 
-### Dashboard Sharing
+Use `:1m` or `:5m` suffixes to query downsampled tiers:
+`avg(cpu_usage_percent:5m[1h])` → 5-minute rolled-up data over 1 hour.
 
-- Create **read-only shareable links** with optional TTL via `POST /api/v1/dashboard/share`
-- Shared view served at `GET /share/{token}` — standalone HTML page with live metric cards, auto-refreshed every 30 seconds
-- `GET /api/v1/dashboard/shares` — list all active tokens
-- `DELETE /api/v1/dashboard/shares/{token}` — revoke a link
-- Expired tokens return `410 Gone`; revoked tokens return `404 Not Found`
-- Dashboard **Admin tab** → **Shared Dashboards** section: create links with label + TTL, view/copy tokens, revoke buttons
-
-### Grafana Integration
-
-- Implements the **Grafana SimpleJSON** data source protocol
-- Add WatchTower as a data source in Grafana (type: SimpleJSON, URL: `http://localhost:9090/api/grafana/`)
-- Browse and search available metrics via the Grafana metric selector
-- Query full time-series data with label support in target panels
-- Unsupported metric names are evaluated as **WQL expressions** (e.g., `cpu_usage_percent / 100`)
-- Alert events appear as **Grafana annotations** on any panel
-
-### Metric Math Expressions
-
-- WQL now supports **vector × vector arithmetic**: `used_bytes / total_bytes`
-- Label-based matching: series are joined by identical label sets; unmatched series are dropped
-- **Broadcast mode**: if one side has a single label-less series, it is applied to all series on the other side
-- Full operator support: `+`, `-`, `*`, `/` across any combination of scalars and vectors
-
-### Process Monitoring
-- Collects the top 20 processes by CPU usage every 10 seconds via `gopsutil/v3/process`
-- Per-process data: PID, name, CPU%, memory (MB + %), status (running/sleeping/zombie), start time, command line, username
-- Writes `process_cpu{name=…,pid=…}` and `process_memory_mb{name=…,pid=…}` to TSDB for alerting and WQL queries
-- `GET /api/v1/processes` returns current snapshot sorted by CPU; `?sort=memory` sorts by memory instead
-
-### Status Page
-- Public-facing status page at `GET /status` — no API key required
-- Shows overall system status: **Operational** (all probes up) · **Degraded** (some down) · **Down** (all down)
-- Lists all monitored endpoints with current status, uptime %, and response time
-- Lists all SLOs with current SLI vs. target
-- Shows last 10 alert firing/resolved events as an incident history
-- Clean, minimal dark-theme HTML design (separate from the main dashboard)
-- `GET /status/badge` returns an SVG badge for embedding in READMEs or external dashboards
-
-### Metrics Aggregation Pipeline
-- Define rules to continuously aggregate raw metrics into new derived series
-- Each rule specifies: input metric, output metric, aggregation function, time window, and optional `group_by` label keys
-- **Aggregation functions**: `avg`, `sum`, `max`, `min`, `count`, `p50`, `p95`, `p99`
-- **Windows**: `1m`, `5m`, `1h`
-- Background goroutine evaluates all rules every minute and writes results back to TSDB, making them queryable via WQL
-- `group_by` partitions the input series by label values; each partition produces a separate output series
-- Percentile functions use linear interpolation for accuracy
-
-### Data Export
-- Export TSDB metrics, logs, or traces as **CSV** or **JSON** via GET requests
-- **Metrics export**: `GET /api/v1/export/metrics?format=csv&name=<metric>&start=<ms>&end=<ms>`
-- **Logs export**: `GET /api/v1/export/logs?format=csv&level=<level>&source=<src>&start=<ms>&end=<ms>`
-- **Traces export**: `GET /api/v1/export/traces?format=json&start=<ms>&end=<ms>` (CSV flattens to span-level rows)
-- Time range defaults to the past hour; all params optional
-- Response includes `Content-Disposition: attachment` header for direct browser download
-- Dashboard **Export** buttons on Metrics and Logs tabs trigger instant download
-
-### Multi-Channel Notifications
-- Five channel types: **Console** (stdout), **Webhook** (generic JSON POST), **Slack** (attachments with color-coded severity), **Discord** (embeds), **Email** (net/smtp with PLAIN auth)
-- `notify.Router` routes each `Notification` to all channels whose severity filter matches; dispatches in goroutines so notifications never block the alert evaluation loop
-- Per-channel severity filter: e.g. send Slack only for `critical`, email for all
-- Notification history ring buffer stores the last 200 results (channel type, alert name, severity, sent/failed status, error message)
-- `GET /api/v1/notifications` returns the full history as JSON
-- Alert engine checks: if a `Router` is set → call `router.Dispatch()`; else fall back to rule-level `webhook_url`
-- Channels configured via `notifications.channels[]` in `watchtower.yaml`
-
-### Custom Dashboard Panels
-- Users can define custom metric panels from any WQL expression via the dashboard UI
-- In-memory `PanelStore` backed by ordered insertion; supports `stat` and `gauge` panel types
-- Per-panel configurable auto-refresh interval (minimum 5 seconds, default 30 seconds)
-- REST API at `:8080/api/v1/dashboard/panels`: `POST` to create, `GET` to list, `DELETE /{id}` to remove
-- Panels persist for the lifetime of the process and appear in the Metrics tab "Custom Panels" section
-
-### Dashboard
-- Dark-theme single-page app served at `:8080`
-- Live Chart.js line charts via WebSocket push (5-second interval)
-- **Eight tabs**: **Metrics** · **Logs** · **Alerts** · **Endpoints** · **Traces** · **Agents** · **Service Map** · **Processes**
-- **Aggregation Rules** section in Metrics tab: list active rules, "+ Add Rule" modal, delete rules
-- **Export buttons** on Metrics and Logs tabs: one-click CSV/JSON download for the current dataset
-- **Processes tab**: live process table with CPU/Memory columns; clickable column headers for client-side sorting; search filter bar; red highlight for high-CPU (>50%) or high-memory (>1GB) processes; auto-refreshes every 10 seconds
-- **Anomalies section** in Alerts tab: color-coded events (red=high, yellow=medium, blue=low), actual vs expected value, Z-score, live metric filter
-- **Correlations widget** in Metrics tab: two metric selects + window selector + "Analyze" button renders a scatter chart with the Pearson r; "Auto-correlate" lists the top 5 related metrics
-- **Forecasting & Capacity** section in Metrics tab: capacity summary cards (CPU/Memory/Disk) with trend arrow (↑↓→) and health badge (healthy/warning/critical); interactive forecast widget — select metric, optionally enter a threshold, click "Forecast" to see 1h/24h/7d predictions and a dashed-line projection chart
-- WQL query box with instant results
-- Log viewer with full-text/regex search and level filter
-- Alert manager with rule creation modal and state history
-- Endpoint cards with status badge, response time, uptime %, sparkline chart, and 20-check status dots
-- Trace list with service filter and min-duration filter; click any trace to expand a proportional **waterfall diagram**
-- **Agents tab**: table with hostname, IP, OS, status badge (online/offline), last-seen (relative), registered time; "X Online / Y Offline" summary; auto-refreshes every 15 seconds
-- **Custom Panels** section in the Metrics tab: "+ Add Panel" button opens a modal; each panel auto-refreshes its WQL query at the configured interval
-- **Notification History** section in the Alerts tab: lists the last 50 sent/failed notifications with channel type, severity badge, and error details
-- **Theme toggle**: 🌙/☀️ button in header switches between dark and light themes; preference stored in `localStorage`
-- **Auto-refresh selector** in header: 5s / 10s / 30s / 60s / Paused; preference stored in `localStorage`; "Paused" suspends metric chart and UI updates while keeping WebSocket connected
-
-### YAML Configuration
-- `watchtower.yaml` at project root controls all ports, intervals, and pre-loaded rules/probes
-- Missing file → safe defaults used silently
-
-## Quick Start
-
-**Requires Go 1.21+**
-
-```bash
-git clone https://github.com/apaqa/watchtower.git
-cd watchtower
-
-go run ./cmd/watchtower
-```
-
-Then open **http://localhost:8080** in your browser.
-
-To build a binary:
-
-```bash
-go build -o watchtower ./cmd/watchtower
-./watchtower
-```
-
-### Endpoints
-
-| Service | Address |
-|---------|---------|
-| Dashboard | http://localhost:8080 |
-| Ingest API | http://localhost:9090/api/v1/metrics |
-| WQL Query | http://localhost:9090/api/v1/query |
-| Alert API | http://localhost:9090/api/v1/alerts |
-| Log API | http://localhost:9090/api/v1/logs |
-| Probe API | http://localhost:9090/api/v1/probes |
-| Trace API | http://localhost:9090/api/v1/traces |
-| Agent Registry | http://localhost:9090/api/v1/agents |
-| Auth / Key Mgmt | http://localhost:9090/api/v1/auth/keys |
-| Prometheus Ingest | http://localhost:9090/api/v1/metrics/prometheus |
-| Prometheus Scrape | http://localhost:9090/metrics |
-| Custom Panels API | http://localhost:8080/api/v1/dashboard/panels |
-| Dashboard Templates API | http://localhost:8080/api/v1/dashboard/templates |
-| Pipeline API | http://localhost:9090/api/v1/pipeline/rules |
-| Export API | http://localhost:9090/api/v1/export/metrics |
-| Process API | http://localhost:9090/api/v1/processes |
-| Status Page | http://localhost:9090/status |
-| Status Badge | http://localhost:9090/status/badge |
-| Anomaly API | http://localhost:9090/api/v1/anomalies |
-| Correlation API | http://localhost:9090/api/v1/correlate |
-| Compare API | http://localhost:9090/api/v1/compare |
-| Change Detection API | http://localhost:9090/api/v1/changes |
-| Replay API | http://localhost:9090/api/v1/replay/recordings |
-| Tag API | http://localhost:9090/api/v1/tags |
-| Saved Query API | http://localhost:9090/api/v1/queries |
-
-## Configuration
-
-Place `watchtower.yaml` in the project root. All fields are optional — defaults are used for any missing key.
-
-```yaml
-server:
-  ingest_port: 9090       # ingest + probe + alert + log API port
-  dashboard_port: 8080    # web UI port
-
-agent:
-  enabled: true           # enable the system metrics agent
-  interval_seconds: 5     # collection interval
-
-retention:
-  metrics_hours: 1        # TSDB in-memory retention window
-  logs_hours: 24          # log ring-buffer retention window
-
-# HTTP endpoints to probe periodically
-endpoints:
-  - name: my-api
-    url: https://api.example.com/health
-    method: GET
-    expected_status: 200
-    interval_seconds: 30
-    timeout_ms: 5000
-    headers:
-      Authorization: "Bearer token"
-
-# Alert rules loaded at startup (equivalent to POST /api/v1/alerts/rules)
-alerts:
-  - name: high_cpu
-    wql_expression: avg(cpu_usage_percent[5m])
-    operator: ">"
-    threshold: 85
-    duration: 5m
-    severity: warning
-  - name: high_memory
-    wql_expression: avg(memory_usage_percent[5m])
-    operator: ">"
-    threshold: 90
-    duration: 5m
-    severity: critical
-```
-
-## WQL Query Language
-
-```
-# Aggregation + time window
-avg(cpu_usage_percent[5m])
-max(memory_usage_percent[1h])
-rate(cpu_usage_percent[5m])      # per-second rate of change
-last(disk_usage_percent[5m])     # most recent value
-
-# Label filters
-avg(cpu_usage_percent{host="node1"}[5m])
-max(cpu_usage_percent{host="server1",env="prod"}[1h])
-
-# Arithmetic
-avg(memory_used_bytes[5m]) / 1073741824    # bytes → GB
-
-# Comparison (returns bool)
-avg(cpu_usage_percent[5m]) > 80
-
-# Group-by
-sum(cpu_usage_percent[5m]) by (host)
-avg(memory_usage_percent[5m]) by (host)
-```
-
-Query via HTTP:
-
-```bash
-# Scalar
-curl "http://localhost:9090/api/v1/query?q=avg(cpu_usage_percent[5m])"
-# {"type":"scalar","scalar":45.23}
-
-# Vector
-curl "http://localhost:9090/api/v1/query?q=avg(cpu_usage_percent[5m])%20by%20(host)"
-# {"type":"vector","vector":[{"labels":{"host":"DESKTOP"},"value":45.23}]}
-
-# Bool
-curl "http://localhost:9090/api/v1/query?q=avg(cpu_usage_percent[5m])%20>%2080"
-# {"type":"bool","bool":false}
-```
+---
 
 ## API Reference
 
@@ -563,1202 +174,175 @@ curl "http://localhost:9090/api/v1/query?q=avg(cpu_usage_percent[5m])%20>%2080"
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/metrics` | Ingest metric data points (JSON array) |
-| `GET`  | `/api/v1/query?q=<WQL>` | Execute a WQL query |
+| `POST` | `/api/v1/metrics` | Ingest metric points (JSON array) |
+| `GET`  | `/api/v1/query?q=<wql>` | Execute WQL query |
+| `GET`  | `/api/v1/metrics/names` | List all metric names |
+| `POST` | `/api/v1/metrics/prometheus` | Prometheus text-format push |
+| `GET`  | `/metrics` | Prometheus scrape endpoint |
 
-```bash
-curl -X POST http://localhost:9090/api/v1/metrics \
-  -H "Content-Type: application/json" \
-  -d '[{"name":"my_metric","labels":{"host":"node1"},"value":42.5}]'
-```
+### Logs & Traces
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/logs` | Batch write log entries |
+| `GET`  | `/api/v1/logs?q=<text>&level=<l>&limit=<n>` | Search logs |
+| `POST` | `/api/v1/traces` | Ingest trace spans |
+| `GET`  | `/api/v1/traces?service=<s>&limit=<n>` | Query traces |
 
 ### Alerts
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST`   | `/api/v1/alerts/rules` | Create an alert rule |
-| `GET`    | `/api/v1/alerts/rules` | List all rules with current state |
+| `GET`  | `/api/v1/alerts/rules` | List alert rules |
+| `POST` | `/api/v1/alerts/rules` | Create/update a rule |
 | `DELETE` | `/api/v1/alerts/rules/{name}` | Delete a rule |
-| `GET`    | `/api/v1/alerts/active` | List currently firing alerts |
-| `GET`    | `/api/v1/alerts/history` | Last 100 state-change events |
+| `GET`  | `/api/v1/alerts` | Active alerts |
+| `GET`  | `/api/v1/alerts/history` | Alert event history |
 
-```bash
-curl -X POST http://localhost:9090/api/v1/alerts/rules \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "high_cpu",
-    "wql_expression": "avg(cpu_usage_percent[5m])",
-    "operator": ">",
-    "threshold": 80,
-    "duration": "5m",
-    "severity": "critical",
-    "webhook_url": "https://hooks.example.com/notify"
-  }'
-```
-
-Alert state machine:
-
-```
-inactive ──(condition true, duration=0)──▶ firing ──(condition false)──▶ resolved ──▶ inactive
-inactive ──(condition true, duration>0)──▶ pending ──(sustained)──▶ firing
-                                          └──(condition false)──▶ inactive
-```
-
-Webhook payload:
-
-```json
-{
-  "alert_name": "high_cpu",
-  "severity": "critical",
-  "value": 95.23,
-  "message": "avg(cpu_usage_percent[5m]) = 95.2300 (threshold: > 80.0000)",
-  "state": "firing",
-  "fired_at": "2026-03-22T10:00:00Z"
-}
-```
-
-### Logs
+### Endpoint Probes & Synthetic Monitoring
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/logs` | Ingest log entries (JSON array) |
-| `POST` | `/api/v1/logs/single` | Ingest a single log entry |
-| `GET`  | `/api/v1/logs` | Search logs (`q`, `level`, `source`, `limit`) |
-
-```bash
-# Batch ingest
-curl -X POST http://localhost:9090/api/v1/logs \
-  -H "Content-Type: application/json" \
-  -d '[{"level":"error","source":"myapp","message":"db connection failed"}]'
-
-# Search (supports /regex/ patterns)
-curl "http://localhost:9090/api/v1/logs?q=error&level=error&limit=50"
-curl "http://localhost:9090/api/v1/logs?q=%2Fcode+%5Cd%2B%2F"   # /code \d+/
-```
-
-Log entry schema:
-
-```json
-{
-  "timestamp": 1711000000000,
-  "level": "error",
-  "source": "myapp",
-  "message": "database connection failed",
-  "labels": {"host": "node1", "env": "prod"}
-}
-```
-
-`timestamp` is Unix milliseconds and may be omitted (server fills it in). `level` is one of `debug`, `info`, `warn`, `error`.
-
-### Endpoint Probes
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`    | `/api/v1/probes` | List all probes with current status |
-| `POST`   | `/api/v1/probes` | Add a probe |
+| `GET`  | `/api/v1/probes` | List probes and latest results |
+| `POST` | `/api/v1/probes` | Add a probe |
 | `DELETE` | `/api/v1/probes/{name}` | Remove a probe |
-| `GET`    | `/api/v1/probes/{name}/history` | Last 100 check results |
+| `GET`  | `/api/v1/synthetic` | List synthetic tests |
+| `POST` | `/api/v1/synthetic` | Register a new test |
+| `GET`  | `/api/v1/synthetic/{name}/history` | Test run history |
 
-```bash
-# Add a probe
-curl -X POST http://localhost:9090/api/v1/probes \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "my-api",
-    "url": "https://api.example.com/health",
-    "method": "GET",
-    "expected_status": 200,
-    "interval_seconds": 30,
-    "timeout_ms": 5000
-  }'
+### Webhooks
 
-# View status
-curl http://localhost:9090/api/v1/probes
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/webhook/github` | GitHub events → log entries |
+| `POST` | `/api/v1/webhook/generic?metric_name=X` | JSON → metrics |
+| `POST` | `/api/v1/webhook/{custom}` | Configured endpoint |
 
-# Remove
-curl -X DELETE http://localhost:9090/api/v1/probes/my-api
-```
+### Security & Multi-Tenancy
 
-Probe status response:
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/api/v1/auth/keys` | List API keys (admin) |
+| `POST` | `/api/v1/auth/keys` | Create API key |
+| `DELETE` | `/api/v1/auth/keys/{name}` | Revoke key |
+| `GET`  | `/api/v1/audit` | Audit log (admin) |
+| `GET`  | `/api/v1/tenants` | List tenants |
+| `POST` | `/api/v1/tenants` | Create tenant |
+| `DELETE` | `/api/v1/tenants/{id}` | Delete tenant |
 
-```json
-{
-  "name": "my-api",
-  "url": "https://api.example.com/health",
-  "status": "up",
-  "response_ms": 142,
-  "status_code": 200,
-  "uptime_pct": 99.5,
-  "last_check": 1711000000000,
-  "recent_history": [
-    {"timestamp": 1711000000000, "status": "up", "status_code": 200, "response_ms": 142}
-  ]
+### Dashboard Sharing (port 8080)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/dashboard/share` | Create share token |
+| `GET`  | `/api/v1/dashboard/shares` | List tokens |
+| `DELETE` | `/api/v1/dashboard/shares/{token}` | Revoke |
+| `GET`  | `/share/{token}` | Read-only shared view (HTML) |
+
+### Operations
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/api/v1/health` | All health checks + status |
+| `GET`  | `/api/v1/health/live` | Liveness probe (Kubernetes) |
+| `GET`  | `/api/v1/health/ready` | Readiness probe (Kubernetes) |
+| `GET`  | `/api/v1/quotas` | Resource quotas |
+| `PUT`  | `/api/v1/quotas/{resource}` | Update quota limit |
+| `GET`  | `/api/v1/plugins` | Plugin status |
+| `POST` | `/api/v1/plugins/{name}/start` | Start a plugin |
+| `POST` | `/api/v1/plugins/{name}/stop` | Stop a plugin |
+| `GET`  | `/status` | Public status page (HTML + SVG badge) |
+| `GET`  | `/api/v1/export/metrics` | Export metrics CSV / JSON |
+| `GET`  | `/api/v1/export/logs` | Export logs CSV / JSON |
+
+---
+
+## Grafana Integration
+
+Add WatchTower as a **SimpleJSON** data source in Grafana:
+
+1. Install the *Grafana Simple JSON* plugin
+2. Add data source → URL: `http://localhost:9090/api/grafana/`
+3. All WQL metric names appear as available series in the query builder
+
+---
+
+## Plugin Development
+
+Implement the `Plugin` interface to add custom metric collectors:
+
+```go
+type Plugin interface {
+    Name() string
+    Init(cfg map[string]interface{}) error
+    Collect() ([]model.MetricPoint, error)
+    Stop()
 }
 ```
 
-### Traces
+Register with the manager:
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/v1/traces` | Ingest a batch of spans (JSON array); spans sharing `trace_id` are merged |
-| `GET`  | `/api/v1/traces` | List trace summaries (`service`, `limit`, `min_duration` filters) |
-| `GET`  | `/api/v1/traces/{trace_id}` | Get the full trace with all spans |
-
-```bash
-# Ingest spans
-curl -X POST http://localhost:9090/api/v1/traces \
-  -H "Content-Type: application/json" \
-  -d '[
-    {"trace_id":"abc123","span_id":"root","operation_name":"HTTP GET /api","service_name":"gateway",
-     "start_time":1711000000000,"duration_ms":120,"status":"ok"},
-    {"trace_id":"abc123","span_id":"db01","parent_span_id":"root","operation_name":"db.query",
-     "service_name":"user-service","start_time":1711000000010,"duration_ms":80,"status":"ok"}
-  ]'
-
-# List recent traces (filter to a specific service, min 50ms)
-curl "http://localhost:9090/api/v1/traces?service=gateway&min_duration=50&limit=20"
-
-# Get full trace
-curl "http://localhost:9090/api/v1/traces/abc123"
+```go
+mgr := plugin.New(func(pts []model.MetricPoint) { db.Write(pts) })
+mgr.Register(myPlugin)
+mgr.StartAll()
 ```
 
-Span schema:
+Built-in plugins: `network` (gopsutil), `gpu` (nvidia-smi), `docker` (docker stats).
 
-```json
-{
-  "trace_id":       "abc123",
-  "span_id":        "root",
-  "parent_span_id": "",
-  "operation_name": "HTTP GET /api/users",
-  "service_name":   "api-gateway",
-  "start_time":     1711000000000,
-  "duration_ms":    120,
-  "status":         "ok",
-  "tags":           {"http.method": "GET"},
-  "logs":           [{"timestamp": 1711000000050, "message": "cache miss"}]
-}
-```
-
-`status` is `"ok"` or `"error"`. `parent_span_id` is omitted (or empty string) for root spans.
-
-### Prometheus Compatibility
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/v1/metrics/prometheus` | Ingest metrics in Prometheus text format |
-| `GET`  | `/metrics` | Scrape endpoint — exports all TSDB metrics in Prometheus format |
-
-```bash
-# Push from a Prometheus exporter / your own app
-curl -X POST http://localhost:9090/api/v1/metrics/prometheus \
-  -H "Content-Type: text/plain" \
-  --data-binary '
-# HELP my_app_requests_total Total requests
-# TYPE my_app_requests_total counter
-my_app_requests_total{method="GET",status="200"} 1027 1395066363000
-my_app_requests_total{method="POST",status="500"} 3 1395066363000
-my_app_latency_seconds{quantile="0.99"} 0.034
-'
-
-# Prometheus scrape config to pull from WatchTower
-# scrape_configs:
-#   - job_name: watchtower
-#     static_configs:
-#       - targets: ['localhost:9090']
-```
-
-### API Key Authentication
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST`   | `/api/v1/auth/keys` | Create a new API key (admin required when keys exist) |
-| `GET`    | `/api/v1/auth/keys` | List all keys (masked — last 4 chars only) |
-| `DELETE` | `/api/v1/auth/keys/{name}` | Revoke a key by name |
-
-```bash
-# Create an admin key (open mode — no existing keys)
-curl -X POST http://localhost:9090/api/v1/auth/keys \
-  -H "Content-Type: application/json" \
-  -d '{"name": "my-admin", "permissions": ["admin"]}'
-# Returns: {"name":"my-admin","key":"<64-char-hex>","permissions":["admin"],...}
-# Save the key — it is only shown once.
-
-# Use the key for subsequent requests
-curl http://localhost:9090/api/v1/agents \
-  -H "X-API-Key: <64-char-hex>"
-
-# Create a read-only key (requires admin key)
-curl -X POST http://localhost:9090/api/v1/auth/keys \
-  -H "X-API-Key: <admin-key>" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "readonly", "permissions": ["read"]}'
-
-# Revoke a key
-curl -X DELETE http://localhost:9090/api/v1/auth/keys/readonly \
-  -H "X-API-Key: <admin-key>"
-```
-
-Pre-load keys in `watchtower.yaml`:
-
-```yaml
-api_keys:
-  - name: admin-key
-    key: "your-64-char-random-hex-string"
-    permissions: [admin]
-  - name: ci-readonly
-    key: "another-random-key"
-    permissions: [read]
-```
-
-### Agent Registry
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST`   | `/api/v1/agents/register` | Register or heartbeat (upsert by `agent_id`) |
-| `GET`    | `/api/v1/agents` | List all agents with current status |
-| `GET`    | `/api/v1/agents/{id}` | Get a single agent |
-| `DELETE` | `/api/v1/agents/{id}` | Remove an agent |
-
-```bash
-# Register (also used for heartbeats — same endpoint)
-curl -X POST http://localhost:9090/api/v1/agents/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "agent_id": "550e8400-e29b-41d4-a716-446655440000",
-    "hostname": "node1",
-    "ip_address": "192.168.1.10",
-    "os": "linux",
-    "arch": "amd64",
-    "labels": {"env": "prod"}
-  }'
-
-# List
-curl http://localhost:9090/api/v1/agents
-```
-
-Agent status response:
-
-```json
-{
-  "agent_id":     "550e8400-e29b-41d4-a716-446655440000",
-  "hostname":     "node1",
-  "ip_address":   "192.168.1.10",
-  "os":           "linux",
-  "arch":         "amd64",
-  "status":       "online",
-  "registered_at": 1711000000000,
-  "last_seen_at":  1711000060000,
-  "labels":        {"env": "prod"}
-}
-```
-
-An agent is marked `"offline"` if it has not sent a heartbeat within 30 seconds.
-
-### Custom Panels
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST`   | `/api/v1/dashboard/panels` | Create a custom panel |
-| `GET`    | `/api/v1/dashboard/panels` | List all panels |
-| `GET`    | `/api/v1/dashboard/panels/{id}` | Get a panel |
-| `DELETE` | `/api/v1/dashboard/panels/{id}` | Remove a panel |
-
-```bash
-# Create a panel
-curl -X POST http://localhost:8080/api/v1/dashboard/panels \
-  -H "Content-Type: application/json" \
-  -d '{
-    "id": "avg_cpu",
-    "title": "Average CPU",
-    "wql_query": "avg(cpu_usage_percent[5m])",
-    "panel_type": "stat",
-    "refresh_interval": 10
-  }'
-
-# List
-curl http://localhost:8080/api/v1/dashboard/panels
-
-# Remove
-curl -X DELETE http://localhost:8080/api/v1/dashboard/panels/avg_cpu
-```
-
-Panel schema:
-
-```json
-{
-  "id":               "avg_cpu",
-  "title":            "Average CPU",
-  "panel_type":       "stat",
-  "wql_query":        "avg(cpu_usage_percent[5m])",
-  "width":            1,
-  "refresh_interval": 10,
-  "created_at":       1711000000000
-}
-```
-
-`panel_type` is `"stat"` (large number) or `"gauge"` (percentage). `refresh_interval` minimum is 5 seconds.
-
-### Dashboard Templates
-
-WatchTower includes a small built-in template gallery in the Metrics tab. Clicking the `Templates` button creates ready-made custom panels for common scenarios.
-
-Built-in templates:
-
-- `System Overview` - CPU / RAM / Disk / Network
-- `Application Monitoring` - request rate / error rate / latency
-- `Infrastructure` - probes / process health / disk forecast
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`  | `/api/v1/dashboard/templates` | List all built-in templates |
-| `POST` | `/api/v1/dashboard/templates/apply/{name}` | Apply a template and create its panels |
-
-```bash
-# List available templates
-curl http://localhost:8080/api/v1/dashboard/templates
-
-# Apply the "System Overview" template
-curl -X POST http://localhost:8080/api/v1/dashboard/templates/apply/System%20Overview
-```
-
-### Data Replay
-
-Metric traffic can be recorded to disk and replayed later. This is useful for demos, regression testing, and validating alert rules against historical traffic.
-
-- Recording files are stored under `watchtower-data/recordings/*.rec`
-- Replay writes the recorded metric stream back into the TSDB
-- `speed` accepts multipliers such as `1x`, `2x`, `4x`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/v1/replay/record/start` | Start recording all metric writes |
-| `POST` | `/api/v1/replay/record/stop` | Stop the active recording |
-| `POST` | `/api/v1/replay/play?file=<name>&speed=2x` | Replay a recording into the TSDB |
-| `GET`  | `/api/v1/replay/recordings` | List available recording files |
-
-```bash
-# Start recording all incoming metrics
-curl -X POST http://localhost:9090/api/v1/replay/record/start
-
-# Stop the recording
-curl -X POST http://localhost:9090/api/v1/replay/record/stop
-
-# List files
-curl http://localhost:9090/api/v1/replay/recordings
-
-# Replay one file at 2x speed
-curl -X POST "http://localhost:9090/api/v1/replay/play?file=20260324-120000.rec&speed=2x"
-```
-
-### Notification History
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/v1/notifications` | List last 200 sent/failed notifications |
-
-```bash
-curl http://localhost:9090/api/v1/notifications
-```
-
-Response (array, newest first):
-
-```json
-[
-  {
-    "timestamp":    "2026-03-23T10:00:00Z",
-    "channel_type": "slack",
-    "alert_name":   "high_cpu",
-    "severity":     "critical",
-    "state":        "firing",
-    "status":       "sent"
-  },
-  {
-    "timestamp":    "2026-03-23T09:55:00Z",
-    "channel_type": "webhook",
-    "alert_name":   "high_memory",
-    "severity":     "warning",
-    "state":        "firing",
-    "status":       "failed",
-    "error":        "webhook POST failed: connection refused"
-  }
-]
-```
-
-Configure channels in `watchtower.yaml`:
-
-```yaml
-notifications:
-  channels:
-    - type: console                          # always logs to stdout
-    - type: webhook
-      url: https://hooks.example.com/alert
-      severities: [critical, warning]       # omit to receive all
-    - type: slack
-      url: https://hooks.slack.com/services/T00/B00/xxx
-      severities: [critical]
-    - type: discord
-      url: https://discord.com/api/webhooks/xxx/yyy
-    - type: email
-      smtp_host: smtp.example.com
-      smtp_port: 587
-      from: alerts@example.com
-      to: [oncall@example.com]
-      smtp_username: alerts@example.com
-      smtp_password: secret
-```
-
-### Service Map
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/v1/servicemap` | Build and return service dependency graph from all traces |
-
-```bash
-curl http://localhost:9090/api/v1/servicemap
-```
-
-Response:
-```json
-{
-  "nodes": [
-    { "name": "api-gateway", "type": "api", "request_count": 42, "error_count": 0, "avg_latency_ms": 24.5 },
-    { "name": "user-postgres", "type": "database", "request_count": 38, "error_count": 1, "avg_latency_ms": 8.2 }
-  ],
-  "edges": [
-    { "from_service": "api-gateway", "to_service": "user-postgres", "request_count": 38, "error_rate": 0.026, "avg_latency_ms": 8.2 }
-  ]
-}
-```
-
-Service type is inferred from the name: keywords like `postgres`/`mysql`/`mongo` → `database`, `redis`/`cache` → `cache`, `kafka`/`queue` → `queue`, `external` → `external`, anything else → `api`.
-
-### SLO / SLI Tracking
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`    | `/api/v1/slos` | List all SLOs with current SLI and error budget |
-| `POST`   | `/api/v1/slos` | Create an SLO |
-| `DELETE` | `/api/v1/slos/{name}` | Remove an SLO |
-
-```bash
-# Create an availability SLO
-curl -X POST http://localhost:9090/api/v1/slos \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name":           "api-availability",
-    "metric_type":    "availability",
-    "target_percent": 99.9,
-    "wql_query":      "avg(availability_percent[7d])",
-    "window":         "7d"
-  }'
-
-# List all SLOs with computed status
-curl http://localhost:9090/api/v1/slos
-```
-
-Response entry:
-```json
-{
-  "slo": { "name": "api-availability", "target_percent": 99.9, "window": "7d", ... },
-  "current_sli": 99.95,
-  "error_budget_total": 10.08,
-  "error_budget_consumed": 3.02,
-  "error_budget_pct": 70.0,
-  "healthy": true
-}
-```
-
-The WQL query must return a 0–100 value representing the SLI percentage. Windows: `1d`, `7d`, `30d`.
-
-### Anomaly Detection
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/v1/anomalies` | List recent anomaly events (newest first) |
-| `GET` | `/api/v1/anomalies?metric=<name>` | Filter anomaly events by metric name |
-
-```bash
-# All recent anomalies
-curl http://localhost:9090/api/v1/anomalies
-
-# Filter by metric
-curl "http://localhost:9090/api/v1/anomalies?metric=cpu_usage_percent"
-```
-
-Response entries include `metric_name`, `labels`, `value`, `expected_value`, `deviation_score`, and `severity` (`low`/`medium`/`high`).
-
-### Metric Correlation
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/v1/correlate?a=<m>&b=<m>&window=<w>` | Pearson correlation between two metrics |
-| `GET` | `/api/v1/correlate/auto?metric=<m>&window=<w>` | Top 5 most correlated metrics |
-
-```bash
-# Correlation between CPU and memory over 30 minutes
-curl "http://localhost:9090/api/v1/correlate?a=cpu_usage_percent&b=memory_usage_percent&window=30m"
-
-# Auto-discover metrics correlated with CPU over 1 hour
-curl "http://localhost:9090/api/v1/correlate/auto?metric=cpu_usage_percent&window=1h"
-```
-
-Valid `window` values: `5m` `15m` `30m` `1h` `6h` `1d`
-
-### Metric Comparison & Change Detection
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/v1/compare?metric=<name>&current=<w>&previous=<w>` | Compare average metric values across two adjacent windows |
-| `GET` | `/api/v1/compare/report?current=<w>&previous=<w>` | Generate a comparison report for all known metrics |
-| `GET` | `/api/v1/changes` | List detected metric change points (newest first) |
-| `GET` | `/api/v1/changes?metric=<name>` | Filter detected change points by metric name |
-
-```bash
-# Compare the last hour of CPU usage against the previous hour
-curl "http://localhost:9090/api/v1/compare?metric=cpu_usage_percent&current=1h&previous=1h"
-
-# Generate a report for all metrics
-curl "http://localhost:9090/api/v1/compare/report?current=1h&previous=1h"
-
-# List detected change points
-curl "http://localhost:9090/api/v1/changes"
-```
-
-### Resource Forecasting & Capacity
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/v1/forecast?metric=<name>` | Linear-regression forecast (1h/24h/7d predictions + trend + R²) |
-| `GET` | `/api/v1/forecast?metric=<name>&threshold=<value>` | Exhaustion estimate — time until metric reaches threshold |
-| `GET` | `/api/v1/capacity` | Full capacity report for CPU, Memory, and Disk |
-
-### Downsampling & Retention
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/v1/retention` | List all retention policies (built-in + custom) |
-| `POST` | `/api/v1/retention` | Create a custom retention policy |
-| `DELETE` | `/api/v1/retention/{name}` | Delete a custom retention policy |
-
-### Admin
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/v1/admin/status` | System status (uptime, Go version, goroutines, heap, TSDB stats) |
-| `POST` | `/api/v1/admin/gc` | Force TSDB + Go runtime garbage collection |
-| `POST` | `/api/v1/admin/snapshot` | Flush TSDB to disk immediately |
-| `GET` | `/api/v1/admin/config` | Running config (API keys redacted) |
-| `POST` | `/api/v1/admin/reload` | Hot-reload `watchtower.yaml` (server/agent/retention fields) |
-
-```bash
-# System status
-curl http://localhost:9090/api/v1/admin/status
-
-# Force GC
-curl -X POST http://localhost:9090/api/v1/admin/gc
-
-# List retention policies
-curl http://localhost:9090/api/v1/retention
-
-# Add a custom 2-hour retention policy for debug metrics
-curl -X POST http://localhost:9090/api/v1/retention \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"debug-short","match_pattern":"^debug_.*","max_age_seconds":7200}'
-
-# Delete a custom policy
-curl -X DELETE http://localhost:9090/api/v1/retention/debug-short
-```
-
-```bash
-# Forecast CPU for 1h/24h/7d
-curl "http://localhost:9090/api/v1/forecast?metric=cpu_usage_percent"
-
-# Predict when disk will reach 90%
-curl "http://localhost:9090/api/v1/forecast?metric=disk_usage_percent&threshold=90"
-
-# Full capacity planning report
-curl "http://localhost:9090/api/v1/capacity"
-```
-
-### Incident Management API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST`  | `/api/v1/incidents` | Create a new incident |
-| `GET`   | `/api/v1/incidents` | List incidents (filter: `?status=&severity=`) |
-| `GET`   | `/api/v1/incidents/{id}` | Full detail with timeline |
-| `PUT`   | `/api/v1/incidents/{id}` | Update status / severity / assignee |
-| `POST`  | `/api/v1/incidents/{id}/comment` | Add a timeline comment |
-| `PATCH` | `/api/v1/incidents/{id}/resolve` | Resolve the incident |
-
-```bash
-# Create incident
-curl -X POST http://localhost:9090/api/v1/incidents \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"Database latency spike","severity":"critical","author":"alice"}'
-
-# List open incidents
-curl "http://localhost:9090/api/v1/incidents?status=investigating"
-
-# Add comment
-curl -X POST http://localhost:9090/api/v1/incidents/inc-123/comment \
-  -H 'Content-Type: application/json' \
-  -d '{"author":"bob","message":"Root cause identified: slow query"}'
-
-# Resolve
-curl -X PATCH http://localhost:9090/api/v1/incidents/inc-123/resolve \
-  -H 'Content-Type: application/json' -d '{"author":"alice"}'
-```
-
-### On-Call Schedule API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`  | `/api/v1/oncall` | Current on-call person and shift end time |
-| `GET`  | `/api/v1/oncall/schedule` | Full rotation schedule |
-| `POST` | `/api/v1/oncall/schedule` | Set or update the rotation schedule |
-
-```bash
-# Get current on-call
-curl http://localhost:9090/api/v1/oncall
-
-# Set schedule
-curl -X POST http://localhost:9090/api/v1/oncall/schedule \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"default","timezone":"UTC","rotation":[
-    {"user_name":"alice","start_hour":9,"end_hour":17,"days":["mon","tue","wed","thu","fri"]},
-    {"user_name":"bob","start_hour":17,"end_hour":24,"days":["mon","tue","wed","thu","fri"]},
-    {"user_name":"carol","start_hour":0,"end_hour":24,"days":["sat","sun"]}
-  ]}'
-```
-
-### Audit Log API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`  | `/api/v1/audit` | List audit entries (filters: `user`, `action`, `resource_type`, `limit`) |
-
-### RBAC & Tenant Config
-
-```yaml
-api_keys:
-  - name: alice
-    key: secret123
-    role: admin          # admin / operator / viewer
-    permissions: [admin]
-  - name: readonly-bot
-    key: botkey456
-    role: viewer
-    permissions: [read]
-    tenant_id: acme      # optional tenant association
-
-tenants can be created via API:
-# POST /api/v1/tenants
-# {"id":"acme","name":"Acme Corp","metric_prefix":"acme.","api_key_prefix":"acme_"}
-```
-
-### Tenant API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`  | `/api/v1/tenants` | List all tenants (admin only) |
-| `POST` | `/api/v1/tenants` | Create a tenant (admin only) |
-| `GET`  | `/api/v1/tenants/{id}` | Get a single tenant |
-| `DELETE` | `/api/v1/tenants/{id}` | Delete a tenant (admin only) |
-
-### Plugin API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`  | `/api/v1/plugins` | List all plugins with status, version, interval, last collected count |
-| `POST` | `/api/v1/plugins/{name}/stop` | Stop a running plugin |
-| `POST` | `/api/v1/plugins/{name}/start` | Start or restart a stopped plugin |
-
-```bash
-# List plugins
-curl http://localhost:9090/api/v1/plugins
-
-# Stop the GPU plugin
-curl -X POST http://localhost:9090/api/v1/plugins/gpu/stop
-
-# Re-enable Docker plugin
-curl -X POST http://localhost:9090/api/v1/plugins/docker/start
-```
-
-**Config example** (`watchtower.yaml`):
-```yaml
-plugins:
-  - name: network
-    enabled: true
-    config:
-      interfaces: "eth0,lo"   # limit to specific interfaces
-  - name: gpu
-    enabled: false            # disable if no GPU present
-  - name: docker
-    enabled: true
-```
-
-### Health Check API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`  | `/api/v1/health` | Full health report (all checks, overall status) |
-| `GET`  | `/api/v1/health/live` | Kubernetes liveness probe — always `200` |
-| `GET`  | `/api/v1/health/ready` | Kubernetes readiness probe — `200` healthy, `503` unhealthy |
-
-```bash
-# Kubernetes liveness probe
-curl http://localhost:9090/api/v1/health/live
-
-# Full health report
-curl http://localhost:9090/api/v1/health
-# {"status":"healthy","checks":[{"name":"tsdb","result":{"status":"healthy","message":"ok","latency_ms":0}}],"checked_at_ms":1700000000000}
-```
-
-### Quota & Rate Limit API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`  | `/api/v1/quotas` | List all resource quotas with usage |
-| `PUT`  | `/api/v1/quotas/{resource}` | Update a quota limit |
-
-```bash
-# List quotas
-curl http://localhost:9090/api/v1/quotas
-
-# Update metrics quota to 50 000/min
-curl -X PUT http://localhost:9090/api/v1/quotas/metrics_per_minute \
-  -H 'Content-Type: application/json' -d '{"limit":50000}'
-```
-
-**Config example** (`watchtower.yaml`):
-```yaml
-quotas:
-  - resource: metrics_per_minute
-    limit: 50000
-  - resource: logs_per_minute
-    limit: 10000
-
-rate_limit:
-  enabled: true
-  capacity: 500       # token bucket size (burst)
-  refill_rate: 200    # tokens/second
-```
-
-### Webhook API
-
-| Method  | Path | Description |
-|---------|------|-------------|
-| `POST`  | `/api/v1/webhook/github` | Receive GitHub webhook (push/pull_request/issues → log entries) |
-| `POST`  | `/api/v1/webhook/generic` | Receive any JSON; numeric fields extracted as metrics (`?metric_name=X`) |
-| `POST`  | `/api/v1/webhook/{custom}` | Custom configured endpoint (ExtractRule-based metric extraction) |
-
-```bash
-# Send a GitHub push event
-curl -X POST http://localhost:9090/api/v1/webhook/github \
-  -H 'X-GitHub-Event: push' \
-  -H 'Content-Type: application/json' \
-  -d '{"ref":"refs/heads/main","repository":{"full_name":"acme/app"},"pusher":{"name":"alice"},"commits":[{"id":"abc123","message":"fix"}]}'
-
-# Generic webhook: extract numeric fields as metrics
-curl -X POST 'http://localhost:9090/api/v1/webhook/generic?metric_name=my_service' \
-  -H 'Content-Type: application/json' \
-  -d '{"latency_ms":45.2,"error_rate":0.01}'
-```
-
-### Synthetic Monitoring API
-
-| Method  | Path | Description |
-|---------|------|-------------|
-| `GET`   | `/api/v1/synthetic` | List all synthetic tests with last result |
-| `POST`  | `/api/v1/synthetic` | Register and start a new synthetic test |
-| `GET`   | `/api/v1/synthetic/{name}/history` | Get full result history for a test |
-
-```bash
-# List all tests
-curl http://localhost:9090/api/v1/synthetic
-
-# Register a 2-step login test
-curl -X POST http://localhost:9090/api/v1/synthetic \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "name": "login-flow",
-    "interval_seconds": 60,
-    "steps": [
-      {"name":"login","method":"POST","url":"https://api.example.com/auth","body":"{\"user\":\"test\"}","expected_status":200,"extract_vars":{"token":"$.token"}},
-      {"name":"profile","url":"https://api.example.com/me","headers":{"Authorization":"Bearer {token}"},"assert_body_contains":"email"}
-    ]
-  }'
-
-# View history
-curl http://localhost:9090/api/v1/synthetic/login-flow/history
-```
-
-### Dashboard Share API
-
-| Method   | Path | Description |
-|----------|------|-------------|
-| `POST`   | `/api/v1/dashboard/share` | Create a shareable read-only link |
-| `GET`    | `/api/v1/dashboard/shares` | List all share tokens |
-| `DELETE` | `/api/v1/dashboard/shares/{token}` | Revoke a token |
-| `GET`    | `/share/{token}` | View the read-only shared dashboard (HTML) |
-
-```bash
-# Create a link valid for 24 hours
-curl -X POST http://localhost:8080/api/v1/dashboard/share \
-  -H 'Content-Type: application/json' \
-  -d '{"label":"Weekly Review","ttl_seconds":86400}'
-# {"token":"3f9a...","label":"Weekly Review","created_at_ms":...,"expires_at_ms":...}
-
-# Access shared view
-open http://localhost:8080/share/3f9a...
-
-# Revoke
-curl -X DELETE http://localhost:8080/api/v1/dashboard/shares/3f9a...
-```
-
-### Grafana SimpleJSON API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`  | `/api/grafana/` | Health check (Grafana data source connection test) |
-| `POST` | `/api/grafana/search` | Return available metric names (optionally filtered by `target` prefix) |
-| `POST` | `/api/grafana/query` | Query time-series data in SimpleJSON timeserie format |
-| `POST` | `/api/grafana/annotations` | Return fired alert events as Grafana panel annotations |
-
-```bash
-# Test connection
-curl http://localhost:9090/api/grafana/
-
-# List all metrics
-curl -X POST http://localhost:9090/api/grafana/search \
-  -H 'Content-Type: application/json' -d '{}'
-
-# Query time series (last hour)
-curl -X POST http://localhost:9090/api/grafana/query \
-  -H 'Content-Type: application/json' \
-  -d '{"range":{"from":"2024-01-01T00:00:00.000Z","to":"2030-01-01T00:00:00.000Z"},
-       "targets":[{"target":"cpu_usage_percent","type":"timeserie"}]}'
-
-# Query via WQL expression
-curl -X POST http://localhost:9090/api/grafana/query \
-  -H 'Content-Type: application/json' \
-  -d '{"range":{"from":"2024-01-01T00:00:00.000Z","to":"2030-01-01T00:00:00.000Z"},
-       "targets":[{"target":"avg(cpu_usage_percent[5m])","type":"timeserie"}]}'
-```
-
-### Process Monitor
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/v1/processes` | List top 20 processes by CPU (add `?sort=memory` for memory order) |
-
-```bash
-# Top processes by CPU
-curl http://localhost:9090/api/v1/processes
-
-# Top processes by memory
-curl "http://localhost:9090/api/v1/processes?sort=memory"
-```
-
-### Metric Tags
-
-WatchTower now supports reusable color tags for metrics, alerts, and probes.
-
-- Dashboard metric cards, active alerts, and probe cards render colored tag badges
-- Search can work by tag value such as `production`, or by `key:value`
-- The dashboard reads resource tags through the same search API used by automation/scripts
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/v1/tags` | Create a tag with `key`, `value`, and hex `color` |
-| `GET` | `/api/v1/tags` | List all tags |
-| `POST` | `/api/v1/tags/attach` | Attach a tag to a metric, alert, or probe |
-| `GET` | `/api/v1/tags/search?tag=production` | Find all tagged resources matching the tag |
-| `GET` | `/api/v1/tags/search?resource_type=metric&resource_id=cpu_usage_percent` | List tags on a specific resource |
-
-```bash
-# Create a production tag
-curl -X POST http://localhost:9090/api/v1/tags \
-  -H 'Content-Type: application/json' \
-  -d '{"key":"env","value":"production","color":"#22c55e"}'
-
-# Attach the tag to a metric
-curl -X POST http://localhost:9090/api/v1/tags/attach \
-  -H 'Content-Type: application/json' \
-  -d '{"tag_id":"tag-1","resource_type":"metric","resource_id":"cpu_usage_percent"}'
-
-# Search resources by tag
-curl "http://localhost:9090/api/v1/tags/search?tag=production"
-```
-
-### Saved Queries
-
-Saved WQL queries can be stored server-side and loaded from the Metrics tab sidebar. Favorite queries are pinned to the top in both the API result order and the dashboard.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/v1/queries` | Save a WQL query |
-| `GET` | `/api/v1/queries` | List saved queries, favorites first |
-| `DELETE` | `/api/v1/queries/{id}` | Delete a saved query |
-| `PUT` | `/api/v1/queries/{id}/favorite` | Toggle favorite status |
-
-```bash
-# Save a query
-curl -X POST http://localhost:9090/api/v1/queries \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"CPU Avg","wql_expression":"avg(cpu_usage_percent[5m])","description":"Dashboard default","created_by":"ops"}'
-
-# List queries
-curl http://localhost:9090/api/v1/queries
-
-# Toggle favorite
-curl -X PUT http://localhost:9090/api/v1/queries/query-1/favorite
-```
-
-### Status Page
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/status` | Public HTML status page (no auth required) |
-| `GET` | `/status/badge` | SVG badge: green=operational, yellow=degraded, red=down |
-
-```bash
-# View status page
-curl http://localhost:9090/status
-
-# Get SVG badge (embed in a README with ![status](http://localhost:9090/status/badge))
-curl http://localhost:9090/status/badge
-```
-
-### Aggregation Pipeline
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`    | `/api/v1/pipeline/rules` | List all aggregation rules |
-| `POST`   | `/api/v1/pipeline/rules` | Create a new aggregation rule |
-| `DELETE` | `/api/v1/pipeline/rules/{name}` | Remove a rule |
-
-```bash
-# Compute p95 request latency per service, every 5 minutes
-curl -X POST http://localhost:9090/api/v1/pipeline/rules \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name":          "latency_p95",
-    "input_metric":  "request_latency_ms",
-    "output_metric": "request_latency_ms_p95",
-    "aggregation":   "p95",
-    "window":        "5m",
-    "group_by":      ["service"]
-  }'
-
-# List rules
-curl http://localhost:9090/api/v1/pipeline/rules
-
-# Delete a rule
-curl -X DELETE http://localhost:9090/api/v1/pipeline/rules/latency_p95
-```
-
-Valid `aggregation` values: `avg` `sum` `max` `min` `count` `p50` `p95` `p99`
-Valid `window` values: `1m` `5m` `1h`
-
-### Data Export
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/v1/export/metrics` | Export metrics as CSV or JSON |
-| `GET` | `/api/v1/export/logs` | Export logs as CSV or JSON |
-| `GET` | `/api/v1/export/traces` | Export traces as CSV or JSON |
-
-Query params:
-- `format` — `csv` (default `json`)
-- `name` — metric name filter (metrics only; omit for all metrics)
-- `level` — log level filter (logs only)
-- `source` — log source filter (logs only)
-- `start`, `end` — Unix millisecond timestamps (default: past 1 hour)
-
-```bash
-# Download last hour of CPU metrics as CSV
-curl "http://localhost:9090/api/v1/export/metrics?format=csv&name=cpu_usage_percent" -o cpu.csv
-
-# Download all logs as JSON
-curl "http://localhost:9090/api/v1/export/logs?format=json" -o logs.json
-
-# Export traces for a specific window
-START=$(date -d '1 hour ago' +%s)000
-END=$(date +%s)000
-curl "http://localhost:9090/api/v1/export/traces?format=csv&start=${START}&end=${END}" -o traces.csv
-```
-
-### WebSocket `/ws`
-
-Connected clients receive a push every 5 seconds:
-
-```json
-{
-  "metrics": {
-    "cpu_usage_percent": 45.2,
-    "memory_usage_percent": 62.1,
-    "memory_used_bytes": 10234961920,
-    "disk_usage_percent": 38.5
-  },
-  "alerts": [...],
-  "logs": [...],
-  "ts": 1711000000000
-}
-```
+---
 
 ## Project Structure
 
 ```
 watchtower/
-├── cmd/watchtower/
-│   └── main.go                  # Entry point — wires all components
+├── cmd/watchtower/main.go           # Entry point, startup banner, wiring
 ├── internal/
-│   ├── config/
-│   │   ├── config.go            # YAML config: Default(), Load(), applyDefaults()
-│   │   └── config_test.go
-│   ├── agent/
-│   │   ├── agent.go             # System metrics agent (gopsutil)
-│   │   ├── log_agent.go         # Log agent (synthetic system events)
-│   │   ├── trace_agent.go       # Trace agent (synthetic 4-span traces, 20% error rate)
-│   │   └── agent_test.go
-│   ├── tsdb/
-│   │   ├── tsdb.go              # In-memory time-series database
-│   │   ├── series.go            # Single time series
-│   │   ├── storage.go           # Gorilla chunk persistence (Delta-of-Delta + XOR)
-│   │   ├── tsdb_test.go
-│   │   └── storage_test.go
-│   ├── wql/
-│   │   ├── lexer.go             # WQL lexer
-│   │   ├── parser.go            # WQL parser (AST)
-│   │   ├── evaluator.go         # WQL evaluator
-│   │   ├── math.go              # Vector-vector binary ops with label matching
-│   │   ├── lexer_test.go
-│   │   ├── parser_test.go
-│   │   ├── evaluator_test.go
-│   │   └── math_test.go
-│   ├── alert/
-│   │   ├── rule.go              # AlertRule, Alert, AlertState, AlertEvent types
-│   │   ├── engine.go            # Evaluation loop, state machine, webhook dispatch
-│   │   ├── api.go               # Alert HTTP API
-│   │   ├── rule_test.go
-│   │   ├── engine_test.go
-│   │   └── api_test.go
-│   ├── logstore/
-│   │   ├── store.go             # Ring-buffer log store, full-text + regex search
-│   │   └── store_test.go
-│   ├── probe/
-│   │   ├── probe.go             # ProbeManager, per-probe goroutines, TSDB write
-│   │   ├── api.go               # Probe HTTP API
-│   │   └── probe_test.go
-│   ├── tracestore/
-│   │   ├── store.go             # In-memory trace store, ring-buffer eviction, 1h retention
-│   │   ├── api.go               # Trace HTTP API (ingest, list, get)
-│   │   └── store_test.go
-│   ├── auth/
-│   │   ├── auth.go              # APIKey, KeyStore, Middleware, GenerateKey
-│   │   ├── api.go               # Key management HTTP API (/api/v1/auth/keys/...)
-│   │   └── auth_test.go
-│   ├── registry/
-│   │   ├── registry.go          # Agent registry: thread-safe map, offline detection
-│   │   ├── api.go               # Agent CRUD HTTP API (/api/v1/agents/...)
-│   │   └── registry_test.go
-│   ├── ingest/
-│   │   ├── server.go            # Ingest HTTP server (implements http.Handler for auth)
-│   │   ├── prometheus.go        # Prometheus text format parser + scrape endpoint
-│   │   ├── server_test.go
-│   │   ├── prometheus_test.go
-│   │   └── log_api_test.go
-│   ├── dashboard/
-│   │   ├── dashboard.go         # WebSocket server + static file handler
-│   │   ├── panels.go            # Custom panel store + panel CRUD HTTP API
-│   │   ├── share.go             # ShareToken, ShareStore, share/revoke API + read-only HTML
-│   │   └── static/
-│   │       └── index.html       # Single-page dashboard (7 tabs + custom panels)
-│   ├── webhook/
-│   │   ├── receiver.go          # GitHub + generic + configured webhook receivers
-│   │   └── receiver_test.go
-│   ├── synthetic/
-│   │   ├── monitor.go           # Multi-step HTTP transaction monitor + API
-│   │   └── monitor_test.go
-│   ├── grafana/
-│   │   ├── api.go               # Grafana SimpleJSON data source protocol
-│   │   └── api_test.go
-│   └── model/
-│       ├── metric.go            # MetricPoint type + fingerprint
-│       ├── log.go               # LogEntry, LogLevel types
-│       ├── trace.go             # Span, Trace, TraceSummary, SpanLog types
-│       └── metric_test.go
-├── watchtower.yaml              # Example configuration
-└── watchtower-data/
-    └── chunks/                  # Gorilla chunk files (*.wtkc, created at runtime)
+│   ├── tsdb/                        # Time-series DB (WAL, downsampling, retention)
+│   ├── wql/                         # Query language parser & evaluator
+│   ├── ingest/                      # HTTP ingest server, auth middleware chain
+│   ├── alert/                       # Rule engine, state machine, history
+│   ├── logstore/                    # Ring-buffer log store with search
+│   ├── tracestore/                  # Span storage & query
+│   ├── probe/                       # HTTP endpoint prober
+│   ├── synthetic/                   # Multi-step transaction monitor
+│   ├── webhook/                     # GitHub + generic + configured receivers
+│   ├── agent/                       # System metrics / log / trace agents
+│   ├── notify/                      # Multi-channel notification router
+│   ├── anomaly/                     # Z-score anomaly detector
+│   ├── correlation/                 # Pearson metric correlation
+│   ├── forecast/                    # Linear regression forecaster
+│   ├── plugin/                      # Plugin manager + Network/GPU/Docker
+│   ├── auth/                        # API-key store, RBAC
+│   ├── audit/                       # Audit log ring buffer
+│   ├── tenant/                      # Multi-tenancy, metric prefixing
+│   ├── quota/                       # Resource quotas + token-bucket limiter
+│   ├── health/                      # Kubernetes-style health checks
+│   ├── incident/                    # Incident store & escalation
+│   ├── oncall/                      # On-call scheduling
+│   ├── servicemap/                  # Service dependency graph
+│   ├── slo/                         # SLO/SLI tracking & error budgets
+│   ├── pipeline/                    # Metric aggregation pipeline rules
+│   ├── export/                      # CSV/JSON data export
+│   ├── grafana/                     # Grafana SimpleJSON data source API
+│   ├── dashboard/                   # WebSocket server, SPA, share links
+│   ├── statuspage/                  # Public status page + SVG badge
+│   ├── procmon/                     # Process monitoring
+│   ├── compare/                     # Period-over-period metric comparison
+│   ├── replay/                      # Metric record & replay
+│   ├── tags/                        # Tag management
+│   ├── savedquery/                  # Saved WQL queries
+│   ├── admin/                       # Admin API & system status
+│   └── integration/                 # End-to-end integration tests (15 tests)
+└── README.md
 ```
+
+---
 
 ## Running Tests
 
 ```bash
-go test ./...                        # all packages (~456 tests)
-go test ./internal/auth/...          # auth middleware + key management (19 tests)
-go test ./internal/ingest/...        # ingest server + Prometheus parser (12 new)
-go test ./internal/registry/...      # agent registry + API (15 tests)
-go test ./internal/tracestore/...    # trace store + API (13 tests)
-go test ./internal/probe/...         # endpoint probing (13 tests)
-go test ./internal/config/...        # config loading (8 tests)
-go test ./internal/logstore/...      # log store
-go test ./internal/alert/...         # alert engine
-go test ./internal/wql/...           # WQL language
-go test ./internal/tsdb/...          # TSDB + persistence
+go test ./...                        # all packages (471+ tests)
+go test ./internal/integration/...  # 15 integration tests
+go test ./internal/tsdb/... -v      # specific package, verbose
 ```
-
-## CLI
-
-Build the standalone CLI:
-
-```bash
-go build ./cmd/watchtower-cli
-```
-
-Common commands:
-
-```bash
-watchtower-cli status
-watchtower-cli metrics list
-watchtower-cli query "avg(cpu_usage_percent[5m])"
-watchtower-cli alerts list
-watchtower-cli alerts create --name high_cpu --expr "avg(cpu_usage_percent[5m])" --threshold 80 --severity warning
-watchtower-cli logs search --query "error" --level error --limit 20
-watchtower-cli config validate watchtower.yaml
-```
-
-Global flags:
-
-- `--server` sets the WatchTower server address; default is `http://localhost:9090`
-- `--api-key` sends `X-API-Key` on API requests
-- `--format table|json` controls output format; default is `table`
-
-## Configuration Validation
-
-`watchtower-cli config validate watchtower.yaml` and the main server startup both use the same validator in `internal/config/validate.go`.
-
-Validation checks include:
-
-- server and SMTP ports must be in the valid range
-- polling intervals and timeouts must be greater than zero
-- endpoint URLs and webhook URLs must be valid
-- endpoints and other structured sections must include required fields
-
-The validator returns both warnings and errors. Warnings are shown but do not block startup; errors fail CLI validation and server startup.
-
-## Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Language | Go 1.21+ |
-| System metrics | [gopsutil/v3](https://github.com/shirou/gopsutil) |
-| WebSocket | [gorilla/websocket](https://github.com/gorilla/websocket) |
-| YAML config | [gopkg.in/yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3) |
-| Distributed tracing | Custom span/trace model; waterfall diagram in browser |
-| Frontend charts | [Chart.js 4](https://www.chartjs.org/) |
-| Query language | WQL (custom, PromQL-inspired) |
-| Storage | In-memory TSDB + Gorilla compressed chunks (no external dependencies) |
