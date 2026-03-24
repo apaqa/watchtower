@@ -1599,6 +1599,43 @@
     </div>
     <div id="plugin-cards" style="margin-top:0.5rem;margin-bottom:1.25rem;display:flex;flex-wrap:wrap;gap:0.6rem"></div>
 
+    <!-- Audit Log section -->
+    <div class="slo-section-header" style="margin-top:0.5rem">
+      <span class="slo-section-label">Audit Log</span>
+      <button onclick="fetchAuditLog()" style="padding:4px 12px;background:var(--accent);color:#0d1117;border:none;border-radius:5px;cursor:pointer;font-size:0.8rem">Refresh</button>
+    </div>
+    <div style="margin-top:0.5rem;margin-bottom:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap">
+      <select id="audit-filter-action" onchange="fetchAuditLog()" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-size:0.8rem">
+        <option value="">All actions</option>
+        <option value="create">create</option>
+        <option value="update">update</option>
+        <option value="delete">delete</option>
+      </select>
+      <select id="audit-filter-resource" onchange="fetchAuditLog()" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-size:0.8rem">
+        <option value="">All resources</option>
+        <option value="alert_rule">alert_rule</option>
+        <option value="probe">probe</option>
+        <option value="incident">incident</option>
+        <option value="api_key">api_key</option>
+        <option value="config">config</option>
+        <option value="tenant">tenant</option>
+      </select>
+    </div>
+    <div style="overflow-x:auto;margin-bottom:1.25rem">
+      <table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+        <thead><tr style="border-bottom:1px solid var(--border);color:var(--muted)">
+          <th style="text-align:left;padding:4px 8px">Time</th>
+          <th style="text-align:left;padding:4px 8px">User</th>
+          <th style="text-align:left;padding:4px 8px">Action</th>
+          <th style="text-align:left;padding:4px 8px">Resource</th>
+          <th style="text-align:left;padding:4px 8px">ID</th>
+          <th style="text-align:left;padding:4px 8px">Status</th>
+          <th style="text-align:left;padding:4px 8px">IP</th>
+        </tr></thead>
+        <tbody id="audit-tbody"><tr><td colspan="7" style="padding:8px;color:var(--muted);text-align:center">No audit records</td></tr></tbody>
+      </table>
+    </div>
+
     <!-- 系统信息卡片 -->
     <div class="slo-section-header">
       <span class="slo-section-label">System Status</span>
@@ -4085,6 +4122,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     fetchHealth();
     fetchQuotas();
     fetchPlugins();
+    fetchAuditLog();
   });
 });
 
@@ -4183,6 +4221,46 @@ function renderPlugins(list) {
         ${actionLabel}
       </button>
     </div>`;
+  }).join('');
+}
+
+// ── Audit Log ─────────────────────────────────────────────────────────────────
+async function fetchAuditLog() {
+  const action = document.getElementById('audit-filter-action')?.value || '';
+  const resource = document.getElementById('audit-filter-resource')?.value || '';
+  let url = `${INGEST_BASE}/api/v1/audit?limit=100`;
+  if (action) url += `&action=${action}`;
+  if (resource) url += `&resource_type=${resource}`;
+  try {
+    const res = await apiFetch(url);
+    const entries = await res.json();
+    renderAuditLog(entries);
+  } catch (e) {
+    const tbody = document.getElementById('audit-tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:8px;color:var(--muted);text-align:center">Audit log unavailable</td></tr>';
+  }
+}
+
+function renderAuditLog(entries) {
+  const tbody = document.getElementById('audit-tbody');
+  if (!tbody) return;
+  if (!entries || entries.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:8px;color:var(--muted);text-align:center">No audit records</td></tr>';
+    return;
+  }
+  const statusColor = s => s === 'denied' ? 'var(--red)' : 'var(--green)';
+  const actionColor = a => a === 'delete' ? 'var(--red)' : a === 'create' ? 'var(--green)' : 'var(--yellow)';
+  tbody.innerHTML = entries.map(e => {
+    const ts = e.timestamp_ms ? new Date(e.timestamp_ms).toLocaleString() : '—';
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:4px 8px;color:var(--muted);white-space:nowrap">${ts}</td>
+      <td style="padding:4px 8px;font-weight:600">${e.user || 'anon'}</td>
+      <td style="padding:4px 8px;color:${actionColor(e.action)}">${e.action}</td>
+      <td style="padding:4px 8px;color:var(--muted)">${e.resource_type}</td>
+      <td style="padding:4px 8px;color:var(--muted);font-family:monospace">${e.resource_id || ''}</td>
+      <td style="padding:4px 8px"><span style="color:${statusColor(e.status)};font-weight:600">${e.status}</span></td>
+      <td style="padding:4px 8px;color:var(--muted);font-family:monospace">${e.ip_address || ''}</td>
+    </tr>`;
   }).join('');
 }
 

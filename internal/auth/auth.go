@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +11,12 @@ import (
 	"sync"
 	"time"
 )
+
+// authContextKey 是存储认证 APIKey 的 context 键类型（私有，避免冲突）
+type authContextKey struct{}
+
+// AuthContextKey 是从 context 中读取已认证 APIKey 的键
+var AuthContextKey = authContextKey{}
 
 // 权限常量
 const (
@@ -29,6 +36,8 @@ type APIKey struct {
 	Key         string   `json:"-"`           // 实际密钥值，序列化时隐藏
 	Name        string   `json:"name"`        // 人类可读标识
 	Permissions []string `json:"permissions"` // "read" | "write" | "admin"
+	Role        string   `json:"role"`        // RBAC 角色："admin"|"operator"|"viewer"；空=不限制
+	TenantID    string   `json:"tenant_id"`   // 所属租户 ID；空="default"
 	CreatedAt   int64    `json:"created_at"`  // Unix 毫秒
 	LastUsedAt  int64    `json:"last_used_at"` // Unix 毫秒；0 表示从未使用
 }
@@ -38,6 +47,8 @@ type MaskedKey struct {
 	Name        string   `json:"name"`
 	Suffix      string   `json:"suffix"`      // 密钥末 4 位
 	Permissions []string `json:"permissions"`
+	Role        string   `json:"role"`
+	TenantID    string   `json:"tenant_id"`
 	CreatedAt   int64    `json:"created_at"`
 	LastUsedAt  int64    `json:"last_used_at"`
 }
@@ -124,6 +135,8 @@ func (ks *KeyStore) List() []MaskedKey {
 			Name:        k.Name,
 			Suffix:      suffix,
 			Permissions: k.Permissions,
+			Role:        k.Role,
+			TenantID:    k.TenantID,
 			CreatedAt:   k.CreatedAt,
 			LastUsedAt:  k.LastUsedAt,
 		})
@@ -202,8 +215,21 @@ func Middleware(ks *KeyStore, next http.Handler) http.Handler {
 			return
 		}
 
+		// RBAC 角色检查（仅当密钥设置了 Role 字段时生效）
+		if apiKey.Role != "" && !checkRBACRole(apiKey.Role, r.Method, r.URL.Path) {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "角色权限不足",
+				"role":  apiKey.Role,
+			})
+			return
+		}
+
 		ks.UpdateLastUsed(key)
-		next.ServeHTTP(w, r)
+		// 将已认证的 APIKey 存入 context，供审计、租户中间件使用
+		ctx := context.WithValue(r.Context(), AuthContextKey, apiKey)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

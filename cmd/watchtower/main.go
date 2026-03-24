@@ -19,12 +19,14 @@ import (
 	"github.com/apaqa/watchtower/internal/correlation"
 	"github.com/apaqa/watchtower/internal/forecast"
 	"github.com/apaqa/watchtower/internal/grafana"
+	"github.com/apaqa/watchtower/internal/audit"
 	"github.com/apaqa/watchtower/internal/health"
 	"github.com/apaqa/watchtower/internal/incident"
 	"github.com/apaqa/watchtower/internal/model"
 	"github.com/apaqa/watchtower/internal/oncall"
 	"github.com/apaqa/watchtower/internal/plugin"
 	"github.com/apaqa/watchtower/internal/quota"
+	"github.com/apaqa/watchtower/internal/tenant"
 	"github.com/apaqa/watchtower/internal/dashboard"
 	"github.com/apaqa/watchtower/internal/export"
 	"github.com/apaqa/watchtower/internal/ingest"
@@ -182,6 +184,8 @@ func main() {
 			Key:         ak.Key,
 			Name:        ak.Name,
 			Permissions: perms,
+			Role:        ak.Role,
+			TenantID:    ak.TenantID,
 		})
 	}
 	if keyStore.Count() > 0 {
@@ -214,6 +218,12 @@ func main() {
 	}
 	defer probeMgr.Stop()
 	statusPage := statuspage.New(probeMgr, sloStore, alertEng)
+
+	// 初始化审计日志存储
+	auditStore := audit.New()
+
+	// 初始化租户存储（预置 default 租户）
+	tenantStore := tenant.New()
 
 	// 初始化健康检查管理器（需在 probeMgr 之后，闭包捕获其变量）
 	healthMgr := health.New()
@@ -279,6 +289,8 @@ func main() {
 	ingestSrv.RegisterGrafanaHandler(grafanaHandler)
 	ingestSrv.RegisterIncidentStore(incidentStore)
 	ingestSrv.RegisterOncallScheduler(oncallScheduler)
+	ingestSrv.RegisterAuditStore(auditStore)
+	ingestSrv.RegisterTenantStore(tenantStore)
 	ingestSrv.RegisterHealthManager(healthMgr)
 	ingestSrv.RegisterQuotaManager(quotaMgr)
 	if rateLimiter != nil {
@@ -399,6 +411,8 @@ func main() {
 	fmt.Printf("Ready:   %s/api/v1/health/ready\n", base)
 	fmt.Printf("Quotas:  %s/api/v1/quotas\n", base)
 	fmt.Printf("Plugins: %s/api/v1/plugins\n", base)
+	fmt.Printf("Audit:   %s/api/v1/audit\n", base)
+	fmt.Printf("Tenants: %s/api/v1/tenants\n", base)
 	fmt.Printf("Scrape:  %s/metrics  (Prometheus scrape endpoint)\n", base)
 	fmt.Printf("Prom:    %s/api/v1/metrics/prometheus  (Prometheus push)\n", base)
 	fmt.Printf("Panels:  http://localhost:%d/api/v1/dashboard/panels\n", cfg.Server.DashboardPort)

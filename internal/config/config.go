@@ -77,6 +77,8 @@ type APIKeyConfig struct {
 	Name        string   `yaml:"name"`        // 人类可读标识
 	Key         string   `yaml:"key"`         // 密钥明文（建议在生产中使用环境变量替换）
 	Permissions []string `yaml:"permissions"` // "read" | "write" | "admin"
+	Role        string   `yaml:"role"`        // RBAC 角色："admin"|"operator"|"viewer"；空=不限制
+	TenantID    string   `yaml:"tenant_id"`   // 所属租户 ID；空="default"
 }
 
 // NotificationsConfig 描述通知系统的顶级配置

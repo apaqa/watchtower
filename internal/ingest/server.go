@@ -12,11 +12,13 @@ import (
 	"github.com/apaqa/watchtower/internal/alert"
 	"github.com/apaqa/watchtower/internal/admin"
 	"github.com/apaqa/watchtower/internal/anomaly"
+	"github.com/apaqa/watchtower/internal/audit"
 	"github.com/apaqa/watchtower/internal/health"
 	"github.com/apaqa/watchtower/internal/incident"
 	"github.com/apaqa/watchtower/internal/oncall"
 	"github.com/apaqa/watchtower/internal/plugin"
 	"github.com/apaqa/watchtower/internal/quota"
+	"github.com/apaqa/watchtower/internal/tenant"
 	"github.com/apaqa/watchtower/internal/auth"
 	"github.com/apaqa/watchtower/internal/correlation"
 	"github.com/apaqa/watchtower/internal/forecast"
@@ -44,6 +46,8 @@ type Server struct {
 	keyStore     *auth.KeyStore     // 可选的 API 密钥存储；nil 表示开放模式
 	quotaManager *quota.Manager     // 可选的资源配额管理器
 	rateLimiter  *quota.RateLimiter // 可选的速率限制器
+	auditStore   *audit.Store       // 可选的审计日志存储
+	tenantStore  *tenant.Store      // 可选的租户存储
 	mux          *http.ServeMux     // 保留对路由器的引用，以便后续注册路由
 	httpSrv      *http.Server
 	listener     net.Listener
@@ -78,7 +82,7 @@ func New(addr string, db *tsdb.TSDB) (*Server, error) {
 	return s, nil
 }
 
-// ServeHTTP 实现 http.Handler，在委托给 mux 之前执行速率限制和 API 密钥认证检查
+// ServeHTTP 实现 http.Handler：速率限制 → 认证(RBAC) → 租户注入 → 审计 → 路由
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 1. 速率限制（如已启用）
 	if s.rateLimiter != nil {
@@ -92,8 +96,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.quotaManager != nil {
 		s.quotaManager.Increment(quota.ResourceAPIRequests, 1)
 	}
-	// 3. 认证检查
-	auth.Middleware(s.keyStore, s.mux).ServeHTTP(w, r)
+	// 3. 构建中间件链：认证 → 租户 → 审计 → 路由
+	var handler http.Handler = s.mux
+	if s.auditStore != nil {
+		handler = audit.Middleware(s.auditStore, handler)
+	}
+	if s.tenantStore != nil {
+		handler = tenant.Middleware(s.tenantStore, handler)
+	}
+	auth.Middleware(s.keyStore, handler).ServeHTTP(w, r)
 }
 
 // RegisterKeyStore 注入 API 密钥存储，启用认证（必须在 Start 之前调用）
@@ -224,6 +235,23 @@ func (s *Server) RegisterPluginManager(m *plugin.Manager) {
 	plugin.RegisterRoutes(s.mux, m)
 }
 
+// RegisterAuditStore 注入审计日志存储并注册审计 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterAuditStore(store *audit.Store) {
+	s.auditStore = store
+	audit.RegisterRoutes(s.mux, store)
+}
+
+// RegisterTenantStore 注入租户存储并注册租户管理 API 路由（必须在 Start 之前调用）
+func (s *Server) RegisterTenantStore(store *tenant.Store) {
+	s.tenantStore = store
+	tenant.RegisterRoutes(s.mux, store)
+}
+
+// containsPrefix 检查 name 是否已以 prefix 开头
+func containsPrefix(name, prefix string) bool {
+	return len(name) >= len(prefix) && name[:len(prefix)] == prefix
+}
+
 // RegisterLogStore 注入日志存储并注册日志 API 路由（必须在 Start 之前调用）
 func (s *Server) RegisterLogStore(ls *logstore.Store) {
 	s.logStore = ls
@@ -309,6 +337,15 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		if !s.quotaManager.Increment(quota.ResourceMetricsPerMinute, int64(len(points))) {
 			http.Error(w, `{"error":"已超出每分钟指标写入配额"}`, http.StatusTooManyRequests)
 			return
+		}
+	}
+
+	// 租户指标前缀处理（非 default 租户自动添加前缀）
+	if t := tenant.GetTenant(r); t != nil && t.MetricPrefix != "" {
+		for i := range points {
+			if !containsPrefix(points[i].Name, t.MetricPrefix) {
+				points[i].Name = t.MetricPrefix + points[i].Name
+			}
 		}
 	}
 

@@ -196,6 +196,37 @@ A lightweight, self-contained monitoring platform written in Go. A single binary
 - Current on-call person displayed in a persistent **header widget**
 - Clicking the widget navigates to the Incidents tab with full schedule view
 
+### Audit Log
+
+- Append-only **ring buffer** (5 000 entries) recording all write operations automatically
+- Each entry: `timestamp_ms`, `user` (API key name / "anonymous"), `action` (create/update/delete), `resource_type`, `resource_id`, `details`, `ip_address`, `status` (success/denied)
+- `AuditMiddleware` wraps the HTTP handler chain — logs POST/PUT/PATCH/DELETE; skips GET/HEAD
+- 403/401 responses automatically marked as `denied`
+- `GET /api/v1/audit` — filter by `user`, `action`, `resource_type`; limited to 500 entries per request
+- Dashboard **Admin tab** → **Audit Log** section: scrollable table with action/resource filters
+
+### Role-Based Access Control (RBAC)
+
+- Three roles on `APIKey.Role`: **admin** › **operator** › **viewer**
+- **admin** — full access to all endpoints including key management, config, tenants, audit log
+- **operator** — can create/modify metrics, alerts, probes, incidents; cannot touch `/api/v1/auth/keys`, `/api/v1/admin/`, `/api/v1/tenants`, `/api/v1/audit`
+- **viewer** — read-only; only GET requests pass; all write methods return `403 Forbidden`
+- RBAC check is skipped when `Role` is empty (backward compatible with existing keys)
+- `APIKey` now carries `role` and `tenant_id` fields; both propagated via request context
+- Configured per key in `watchtower.yaml` `api_keys` section with `role:` field
+
+### Multi-Tenancy
+
+- Each tenant has: `id`, `name`, `api_key_prefix`, `metric_prefix`, `quota_overrides`
+- **Default tenant** (`id: "default"`) always present — zero prefix (full backward compatibility)
+- Metrics written by a non-default tenant are automatically prefixed: `<metric_prefix><name>`
+- `TenantMiddleware` extracts tenant from `APIKey.TenantID` and injects it into request context
+- `GET /api/v1/tenants` — list all tenants (admin only)
+- `POST /api/v1/tenants` — create a new tenant (admin only)
+- `GET /api/v1/tenants/{id}` — get a single tenant
+- `DELETE /api/v1/tenants/{id}` — remove a tenant (admin only; default cannot be deleted)
+- Configurable in `watchtower.yaml` via `api_keys[].tenant_id` field
+
 ### Plugin System
 
 - Extensible **plugin architecture** for custom metric collectors
@@ -1051,6 +1082,40 @@ curl -X POST http://localhost:9090/api/v1/oncall/schedule \
   ]}'
 ```
 
+### Audit Log API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/api/v1/audit` | List audit entries (filters: `user`, `action`, `resource_type`, `limit`) |
+
+### RBAC & Tenant Config
+
+```yaml
+api_keys:
+  - name: alice
+    key: secret123
+    role: admin          # admin / operator / viewer
+    permissions: [admin]
+  - name: readonly-bot
+    key: botkey456
+    role: viewer
+    permissions: [read]
+    tenant_id: acme      # optional tenant association
+
+tenants can be created via API:
+# POST /api/v1/tenants
+# {"id":"acme","name":"Acme Corp","metric_prefix":"acme.","api_key_prefix":"acme_"}
+```
+
+### Tenant API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/api/v1/tenants` | List all tenants (admin only) |
+| `POST` | `/api/v1/tenants` | Create a tenant (admin only) |
+| `GET`  | `/api/v1/tenants/{id}` | Get a single tenant |
+| `DELETE` | `/api/v1/tenants/{id}` | Delete a tenant (admin only) |
+
 ### Plugin API
 
 | Method | Path | Description |
@@ -1349,7 +1414,7 @@ watchtower/
 ## Running Tests
 
 ```bash
-go test ./...                        # all packages (~404 tests)
+go test ./...                        # all packages (~429 tests)
 go test ./internal/auth/...          # auth middleware + key management (19 tests)
 go test ./internal/ingest/...        # ingest server + Prometheus parser (12 new)
 go test ./internal/registry/...      # agent registry + API (15 tests)
